@@ -4,8 +4,9 @@ import cats.{Applicative, FlatMap, Functor, Monad, MonadError}
 import cats.data.StateT
 import cats.effect.std.Random
 import cats.syntax.all.{*, given}
-import se.randomserver.ne.Probability
 import se.randomserver.ne.genome.GenePool.GenePoolStateT
+
+import scala.annotation.unused
 
 case class Gene[W, N](innovation: Long, from: N, to: N, weight: W, enabled: Boolean = true) {
   override def equals(obj: Any): Boolean = obj match
@@ -15,13 +16,15 @@ case class Gene[W, N](innovation: Long, from: N, to: N, weight: W, enabled: Bool
   override def hashCode(): Int = (from, to).hashCode() + 65300
 }
 case class Genome(nInputs: Int, nOutputs: Int, genes: Set[Gene[Double, Int]]):
-  val bias = Range(0, 1)
-  val inputs = Range(bias.end, bias.end + nInputs)
-  val outputs = Range(inputs.end, inputs.end + nOutputs)
-  val hidden =
-    val lastNode = genes.flatMap(g => Set(g.from, g.to)).maxOption.map(_ + 1).getOrElse(outputs.end)
-    Range(outputs.end, lastNode)
-  val nodes = Range(bias.start, hidden.end) //hidden.end)
+  val bias:    Range.Exclusive = Range(0, 1)
+  val inputs:  Range.Exclusive = Range(bias.end, bias.end + nInputs)
+  val outputs: Range.Exclusive = Range(inputs.end, inputs.end + nOutputs)
+  val hidden:  Range.Exclusive = Range(
+    outputs.end,
+    genes.flatMap(g => Set(g.from, g.to)).maxOption.map(_ + 1).getOrElse(outputs.end)
+  )
+  val nodes:   Range.Exclusive = Range(bias.start, hidden.end)
+
 case class GenePool(nextId: Int, innovations: Map[(Int, Int), Long])
 
 object GenePool:
@@ -54,6 +57,7 @@ object GenePool:
     genes = genome1.genes union genome2.genes
   } yield Genome(nInputs, nOutputs, genes)
 
+  @unused
   def mutateAddConnection[F[_]: Monad](genome: Genome)(using r: Random[F]): GenePoolStateT[F, Genome] = for
     from <- StateT.liftF { r.betweenInt(genome.nodes.start, genome.nodes.end) }
     to <- StateT.liftF { r.betweenInt(genome.nodes.start, genome.nodes.end) }
@@ -61,6 +65,7 @@ object GenePool:
               else newConnection(from, to).map(g => genome.copy(genes = genome.genes + g))
   yield result
 
+  @unused
   def mutateAddNode[F[_]: Monad](genome: Genome)(using r: Random[F]): GenePoolStateT[F, Genome] = for
     nextId <- StateT.pure { genome.nodes.end }
     oldConn <- StateT.liftF {
@@ -73,18 +78,21 @@ object GenePool:
     genes = genome.genes - oldConn + oldConn.copy(enabled = false) + c1 + c2 + bias
   )
 
+  @unused
   def mutateWeight[F[_]: Monad](genome: Genome)(using r: Random[F]): GenePoolStateT[F, Genome] = for {
     conn <- StateT.liftF { r.shuffleList(genome.genes.toList.filter(_.enabled)).map(_.head) }
     change <- StateT.liftF(r.betweenDouble(-0.5d, 0.5d))
     updated = conn.copy(weight = conn.weight + change)
   } yield genome.copy(genes = genome.genes - conn + updated)
 
+  @unused
   def chance[F[_]: Monad](c: Double)(eff: Genome => GenePoolStateT[F, Genome])(using r: Random[F]): Genome => GenePoolStateT[F, Genome] = genome =>
     StateT.liftF(r.nextDouble).flatMap {
       case p if p < c => eff(genome)
       case _          => StateT.pure(genome)
     }
 
+  @unused
   def mutate[F[_]: Monad: Random](weightChance: Double, connectionChance: Double, nodeChance: Double)(g: Genome): GenePoolStateT[F, Genome] =
     chance(weightChance)(mutateWeight).apply(g) >>= chance(connectionChance)(mutateAddConnection) >>= chance(nodeChance)(mutateAddNode)
 end GenePool
