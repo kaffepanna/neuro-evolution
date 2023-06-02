@@ -15,6 +15,14 @@ case class Gene[W, N](innovation: Long, from: N, to: N, weight: W, enabled: Bool
 
   override def hashCode(): Int = (from, to).hashCode() + 65300
 }
+
+object Genome:
+  val C1 = 1.0
+  val C2 = 1.0
+  val C3 = 0.2
+end Genome
+
+
 case class Genome(nInputs: Int, nOutputs: Int, genes: Set[Gene[Double, Int]]):
   val bias:    Range.Exclusive = Range(0, 1)
   val inputs:  Range.Exclusive = Range(bias.end, bias.end + nInputs)
@@ -24,6 +32,22 @@ case class Genome(nInputs: Int, nOutputs: Int, genes: Set[Gene[Double, Int]]):
     genes.flatMap(g => Set(g.from, g.to)).maxOption.map(_ + 1).getOrElse(outputs.end)
   )
   val nodes:   Range.Exclusive = Range(bias.start, hidden.end)
+
+  def compare(rhs: Genome): Double =
+    import Genome.*
+    val min_len = List(this.genes.size, rhs.genes.size).min
+    val max_len = List(this.genes.size, rhs.genes.size).max
+
+    val d = this.genes.diff(rhs.genes).size / max_len.toDouble
+    val e = (this.genes.size - rhs.genes.size).abs / max_len.toDouble
+    val w = this.genes.flatMap { g =>
+      rhs.genes.find(g2 => g2.innovation == g.innovation).map(g2 => (g.weight - g2.weight).abs)
+    }.sum / min_len.toDouble
+
+    C1*e + C2*d + C3*w
+
+  override def toString: String = "[" ++ genes.map(_.innovation).mkString(", ") ++ "]"
+end Genome
 
 case class GenePool(nextId: Int, innovations: Map[(Int, Int), Long])
 
@@ -62,6 +86,7 @@ object GenePool:
     from <- StateT.liftF { r.betweenInt(genome.nodes.start, genome.nodes.end) }
     to <- StateT.liftF { r.betweenInt(genome.nodes.start, genome.nodes.end) }
     result <- if genome.genes.exists(g => g.from == from && g.to == to) then StateT.pure(genome)
+              else if from == to then StateT.pure(genome)
               else newConnection(from, to).map(g => genome.copy(genes = genome.genes + g))
   yield result
 

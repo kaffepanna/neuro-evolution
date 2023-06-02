@@ -5,85 +5,100 @@ import cats.syntax.all.{*, given}
 import cats.effect.{ExitCode, IO, IOApp}
 import se.randomserver.ne.genome.{Gene, GenePool, Genome}
 import cats.effect.std.Random
-import se.randomserver.ne.genome.GenePool.GenePoolStateT
+import se.randomserver.ne.genome.GenePool.{GenePoolStateT, cross, mutate}
+import se.randomserver.ne.phenotype.Individual
+import se.randomserver.ne.phenotype.Individual.*
 
-case class Individual(genome: Genome, nodes: Seq[Option[Double]])
+import scala.concurrent.{Await, Future}
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.duration.Duration
 
-object Individual:
-  def from(genome: Genome) = Individual(genome, genome.nodes.map(_ => None))
-end Individual
-
-type IndividualState[A] = State[Individual, A]
-
-def setInputs(data: Seq[Double]): IndividualState[Unit] = State { individual =>
-  assert(data.size == individual.genome.inputs.size, "Wrong number of inputs")
-  individual.genome.inputs.zip(data).map {
-    case (i, v) => setNode(i, v)
-  }.toList.sequence.run(individual).value._1 -> ()
-}
-
-def setBias(data: Seq[Double]): IndividualState[Unit] = State { individual =>
-  assert(data.size == individual.genome.bias.size, "Wrong number of bias inputs")
-  individual.genome.bias.zip(data).map {
-    case (i, v) => setNode(i, v)
-  }.toList.sequence.run(individual).value._1 -> ()
-}
-
-def setNode(i: Int, v: Double): IndividualState[Unit] = State { individual =>
-  individual.copy(nodes = individual.nodes.updated(i, Some(v))) -> ()
-}
-
-def nodeValue(i: Int): IndividualState[Double] = for
-  individual <- State.get[Individual]
-  genome = individual.genome
-  nodeValue <- individual.nodes(i) match
-    case Some(value) => State.pure(value)
-    case None =>
-      val connections = genome.genes.filter(gene => gene.to == i)
-      assert(connections.nonEmpty, "Cannot evaluate node without inputs")
-      connections.map { gene =>
-        nodeValue(gene.from).flatMap { n =>
-          State.pure(gene.weight * n)
-        }
-      }.toList.sequence.map(inputs =>
-        Math.tanh(inputs.sum)
-      )
-  _ <- setNode(i, nodeValue)
-yield nodeValue
-
-def getOutputs: IndividualState[Seq[Double]] = for
-  individual <- State.get[Individual]
-  outputs <- individual.genome.outputs.map(i => nodeValue(i)).toList.sequence
-yield outputs.toSeq
 
 object App extends IOApp {
 
-  def constructor(using Random[IO]): GenePoolStateT[IO, Genome] =
-    GenePool.genome[IO](1, 1)
-      >>= { genome =>
-        GenePool.newConnection(2,1).flatMap { connection =>
-          StateT.pure(genome.copy(genes = Set(connection) ++ genome.genes))
-        }
+  def classify(population: List[Genome]): List[List[Genome]] = population match
+    case archetype :: Nil => List(List(archetype))
+    case archetype :: rest =>
+      val (classified, tobe) = rest.foldLeft(List(archetype) -> List.empty[Genome]) {
+        case ((same, rest), g) => if g.compare(archetype) < 0.4 then (g :: same, rest)
+                                                                else (same, g :: rest)
       }
-  def test(using Random[IO]): GenePoolStateT[IO, List[Genome]] = for {
-    population <- Applicative[GenePoolStateT[IO, _]].replicateA(10, constructor)
-    _ <- StateT.liftF { IO.println(population.map(_.toString)) }
-    _ <- StateT.liftF{
-      val first = population.head
-      IO.println(first.inputs) >>
-      IO.println(first.hidden) >>
-      IO.println(first.outputs)
+      classified :: classify(tobe)
+    case _ => List()
+
+  def score(data: Set[(List[Double], List[Double])])(indivl: Genome): Double = {
+    val error = data.foldLeft(0d) {
+      case (err, (input, expected)) =>
+        val bias = indivl.bias.map(_ => 1.0d)
+        val (_, result) = (Individual.setInputs(input) >> Individual.setBias(bias) >> Individual.getOutputs).run(Individual.from(indivl)).value
+        err + result.zip(expected).map { case (a,b) => Math.pow(a-b, 2) }.sum
     }
-  } yield population
+    1 - Math.sqrt(error / data.size)
+  }
+
+  def scores(data: Set[(List[Double], List[Double])])(population: List[Genome]): List[(Genome, Double)] =
+    population.map { genome =>
+          genome -> score(data)(genome)
+    }
+
+  def constructor(using Random[IO]): GenePoolStateT[IO, Genome] =
+    GenePool.genome[IO](2, 1)
 
   override def run(args: List[String]): IO[ExitCode] = Random.scalaUtilRandom[IO].flatMap { random =>
     given Random[IO] = random
-    for {
-      genepool <- constructor.run(GenePool(0, Map.empty))
-      in = Individual.from(genepool._2)
-      out = (setBias(Seq(1.0d)) >> setInputs(Seq(0.5d)) >> getOutputs).run(in).value
-      _ <- IO.println(out._2)
-      _ <- IO.println(out._1)
-    } yield ExitCode.Success
+    val xor = Set(
+      List(0.0, 0.0) -> List(0.0),
+      List(1.0, 0.0) -> List(1.0),
+      List(0.0, 1.0) -> List(1.0),
+      List(1.0, 1.0) -> List(0.0)
+    )
+
+    val and = Set(
+      List(0.0, 0.0) -> List(0.0),
+      List(1.0, 0.0) -> List(0.0),
+      List(0.0, 1.0) -> List(0.0),
+      List(1.0, 1.0) -> List(1.0)
+    )
+
+    val or = Set(
+      List(0.0, 0.0) -> List(0.0),
+      List(1.0, 0.0) -> List(1.0),
+      List(0.0, 1.0) -> List(1.0),
+      List(1.0, 1.0) -> List(1.0)
+    )
+
+    val data = and
+
+    val popsize = 10
+    val breed = 2
+
+    val state = for {
+      initialPopulation <- constructor.replicateA(popsize)
+
+      endpool <- 1.to(100).toList.foldM(initialPopulation) { case (pool, _) =>
+        val spiecies = classify(pool).map(scores(data)).map(_.sortBy(_._2).reverse)
+
+        val operations = spiecies.flatMap { klass =>
+
+          val breeders = klass.take(breed)
+          val bred = breeders.flatMap { case (genome, _) =>
+            breeders.map { case (genome2, _) =>
+              cross[IO](genome, genome2) >>= mutate(0.7, 0.01, 0.07)
+            }
+          }
+          val breedersPure: Seq[GenePoolStateT[IO, Genome]] = breeders.map(_._1).map(g => StateT.pure(g))
+          val replicated: Seq[GenePoolStateT[IO, Genome]] = List.fill((popsize-breed)/bred.size)(bred).flatten //(popsize/bred.size).flatten
+          breedersPure ++ replicated
+        }
+        operations.sequence
+      }
+
+      scored = classify(endpool).map(scores(data)).map(_.maxBy(_._2)).sortBy(_._2)
+      _ <- scored.map {
+        case (genome, d) => StateT.liftF(IO.println(genome -> d))
+      }.sequence
+    } yield ()
+
+    state.run(GenePool(0, Map.empty)).map(_ => ExitCode.Success)
   }
 }
