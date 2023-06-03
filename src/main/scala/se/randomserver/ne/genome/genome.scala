@@ -1,14 +1,17 @@
 package se.randomserver.ne.genome
 
-import cats.{Applicative, FlatMap, Functor, Monad, MonadError}
+import cats.{Applicative, FlatMap, Functor, Monad, MonadError, Order}
 import cats.data.StateT
+import cats.effect.IO
 import cats.effect.std.Random
 import cats.syntax.all.{*, given}
+import se.randomserver.ne.RandomRange
+import se.randomserver.ne.RandomRange.given
 import se.randomserver.ne.genome.GenePool.GenePoolStateT
 
 import scala.annotation.unused
 
-case class Gene[W, N](innovation: Long, from: N, to: N, weight: W, enabled: Boolean = true) {
+case class Gene[W](innovation: Long, from: Int, to: Int, weight: W, enabled: Boolean = true) {
   override def equals(obj: Any): Boolean = obj match
     case Gene(_, from2, to2, _, _) => (from2, to2) == (from, to)
     case _ => false
@@ -23,7 +26,7 @@ object Genome:
 end Genome
 
 
-case class Genome(nInputs: Int, nOutputs: Int, genes: Set[Gene[Double, Int]]):
+case class Genome[W, I <: Int, O <: Int](nInputs: I, nOutputs: O, genes: Set[Gene[W]]):
   val bias:    Range.Exclusive = Range(0, 1)
   val inputs:  Range.Exclusive = Range(bias.end, bias.end + nInputs)
   val outputs: Range.Exclusive = Range(inputs.end, inputs.end + nOutputs)
@@ -33,18 +36,19 @@ case class Genome(nInputs: Int, nOutputs: Int, genes: Set[Gene[Double, Int]]):
   )
   val nodes:   Range.Exclusive = Range(bias.start, hidden.end)
 
-  def compare(rhs: Genome): Double =
+  def compare(rhs: Genome[W, I, O])(using N: Fractional[W]): Double =
+    import N.*
     import Genome.*
     val min_len = List(this.genes.size, rhs.genes.size).min
     val max_len = List(this.genes.size, rhs.genes.size).max
 
-    val d = this.genes.diff(rhs.genes).size / max_len.toDouble
-    val e = (this.genes.size - rhs.genes.size).abs / max_len.toDouble
+    val d = fromInt(this.genes.diff(rhs.genes).size) / fromInt(max_len)
+    val e = fromInt((this.genes.size - rhs.genes.size).abs) / fromInt(max_len)
     val w = this.genes.flatMap { g =>
       rhs.genes.find(g2 => g2.innovation == g.innovation).map(g2 => (g.weight - g2.weight).abs)
-    }.sum / min_len.toDouble
+    }.sum / fromInt(min_len)
 
-    C1*e + C2*d + C3*w
+    C1*toDouble(e) + C2*toDouble(d) + C3*toDouble(w)
 
   override def toString: String = "[" ++ genes.map(_.innovation).mkString(", ") ++ "]"
 end Genome
@@ -52,7 +56,15 @@ end Genome
 case class GenePool(nextId: Int, innovations: Map[(Int, Int), Long])
 
 object GenePool:
-  type GenePoolStateT[F[_], A] = StateT[F, GenePool, A]
+  import scala.deriving.*
+  opaque type GenePoolStateT[F[_], A] = StateT[F, GenePool, A]
+  given [F[_]](using ap: Applicative[StateT[F, GenePool, _]]): Applicative[GenePoolStateT[F, _]] = ap
+  given [F[_]](using ap: Monad[StateT[F, GenePool, _]]): Monad[GenePoolStateT[F, _]] = ap
+
+  def liftF[F[_]: Applicative, A](fa: F[A]): GenePoolStateT[F, A] = StateT.liftF(fa)
+
+  def run[F[_]: FlatMap, A](initial: GenePool)(runner: GenePoolStateT[F, A]): F[(GenePool, A)] = runner.run(initial)
+
   def nextNodeId[F[_]: Applicative]: GenePoolStateT[F, Int] = StateT(state =>
     (state.copy(nextId = state.nextId + 1) -> state.nextId).pure[F]
   )
@@ -64,25 +76,22 @@ object GenePool:
     (state.copy(innovations = updatedInnovations) -> innovation).pure[F]
   }
 
-  def newConnection[F[_]: Monad: Random](from: Int, to: Int): GenePoolStateT[F, Gene[Double, Int]] = for {
+  def newConnection[F[_]: Monad: Random, W](from: Int, to: Int)(using RR: RandomRange[F, W]): GenePoolStateT[F, Gene[W]] = for {
     i      <- innovation(from, to)
-    weight <- StateT.liftF(Random[F].betweenDouble(-1.0d, 1.0d))
+    weight <- StateT.liftF(RR.get)
   } yield Gene(i, from, to, weight)
 
-  def genome[F[_]: Monad: Random](nInputs: Int, nOutputs: Int): GenePoolStateT[F, Genome] = for
-    initial <- StateT.pure(Genome(nInputs, nOutputs, genes = Set.empty))
+  def genome[F[_]: Monad: Random, W, I <: Int: ValueOf, O <: Int: ValueOf](using RandomRange[F, W]): GenePoolStateT[F, Genome[W, I, O]] = for
+    initial <- StateT.pure(Genome[W, I, O](valueOf[I], valueOf[O], genes = Set.empty))
     in2out <- initial.inputs.flatMap(i => initial.outputs.map(o => newConnection(i, o))).toList.sequence
     bias2out <- initial.outputs.map(o => newConnection(initial.bias.start, o)).toList.sequence
   yield initial.copy(genes = (in2out ++ bias2out).toSet)
 
-  def cross[F[_]: Monad](genome1: Genome, genome2: Genome): GenePoolStateT[F, Genome] = for {
-    nInputs  <- StateT.pure { List(genome1.nInputs, genome2.nInputs).max }
-    nOutputs <- StateT.pure { List(genome1.nOutputs, genome2.nOutputs).max }
-    genes = genome1.genes union genome2.genes
-  } yield Genome(nInputs, nOutputs, genes)
+  def cross[F[_]: Monad, W, I <: Int, O <: Int](genome1: Genome[W, I, O], genome2: Genome[W, I, O]): GenePoolStateT[F, Genome[W, I, O]] =
+    StateT.pure(Genome(genome1.nInputs, genome1.nOutputs, genome1.genes union genome2.genes))
 
   @unused
-  def mutateAddConnection[F[_]: Monad](genome: Genome)(using r: Random[F]): GenePoolStateT[F, Genome] = for
+  def mutateAddConnection[F[_]: Monad, W, I <: Int, O <: Int](genome: Genome[W, I, O])(using r: Random[F], RR: RandomRange[F, W]): GenePoolStateT[F, Genome[W, I, O]] = for
     from <- StateT.liftF { r.betweenInt(genome.nodes.start, genome.nodes.end) }
     to <- StateT.liftF { r.betweenInt(genome.nodes.start, genome.nodes.end) }
     result <- if genome.genes.exists(g => g.from == from && g.to == to) then StateT.pure(genome)
@@ -91,7 +100,7 @@ object GenePool:
   yield result
 
   @unused
-  def mutateAddNode[F[_]: Monad](genome: Genome)(using r: Random[F]): GenePoolStateT[F, Genome] = for
+  def mutateAddNode[F[_]: Monad, W, I <: Int, O <: Int](genome: Genome[W, I, O])(using r: Random[F], RR: RandomRange[F, W]): GenePoolStateT[F, Genome[W, I, O]] = for
     nextId <- StateT.pure { genome.nodes.end }
     oldConn <- StateT.liftF {
       r.shuffleList(genome.genes.toList.filterNot(_.from == genome.bias.start)).map(_.head)
@@ -100,24 +109,30 @@ object GenePool:
     c2 <- newConnection(nextId, oldConn.to)
     bias <- newConnection(genome.bias.start, nextId)
   yield genome.copy(
-    genes = genome.genes - oldConn + oldConn.copy(enabled = false) + c1 + c2 + bias
+    genes = genome.genes - oldConn + oldConn.copy(enabled = false) + c1 + c2 // + bias
   )
 
   @unused
-  def mutateWeight[F[_]: Monad](genome: Genome)(using r: Random[F]): GenePoolStateT[F, Genome] = for {
-    conn <- StateT.liftF { r.shuffleList(genome.genes.toList.filter(_.enabled)).map(_.head) }
-    change <- StateT.liftF(r.betweenDouble(-0.5d, 0.5d))
-    updated = conn.copy(weight = conn.weight + change)
-  } yield genome.copy(genes = genome.genes - conn + updated)
+  def mutateWeight[F[_]: Monad, W: Order: Numeric, I <: Int, O <: Int](genome: Genome[W, I, O])(using r: Random[F], RR: RandomRange[F, W], N: Numeric[W]): GenePoolStateT[F, Genome[W, I ,O]] = {
+    import N._
+    for {
+      conn <- StateT.liftF { r.shuffleList(genome.genes.toList.filter(_.enabled)).map(_.head) }
+      change <- StateT.liftF(RR.get)
+      weightChanged = (fromInt(-2), (fromInt(2), conn.weight + change).maximum).minimum
+      updated = conn.copy(weight = conn.weight + weightChanged)
+    } yield genome.copy(genes = genome.genes - conn + updated)
+  }
 
   @unused
-  def chance[F[_]: Monad](c: Double)(eff: Genome => GenePoolStateT[F, Genome])(using r: Random[F]): Genome => GenePoolStateT[F, Genome] = genome =>
+  def chance[F[_]: Monad, W, I <: Int, O <: Int](c: Double)(eff: Genome[W, I, O] => GenePoolStateT[F, Genome[W, I, O]])(using r: Random[F]): Genome[W, I, O] => GenePoolStateT[F, Genome[W, I, O]] = genome =>
     StateT.liftF(r.nextDouble).flatMap {
       case p if p < c => eff(genome)
       case _          => StateT.pure(genome)
     }
 
   @unused
-  def mutate[F[_]: Monad: Random](weightChance: Double, connectionChance: Double, nodeChance: Double)(g: Genome): GenePoolStateT[F, Genome] =
-    chance(weightChance)(mutateWeight).apply(g) >>= chance(connectionChance)(mutateAddConnection) >>= chance(nodeChance)(mutateAddNode)
+  def mutate[F[_]: Monad: Random, W: Order: Numeric, I <: Int, O <: Int](weightChance: Double, connectionChance: Double, nodeChance: Double)(using RandomRange[F, W])(g: Genome[W, I, O]): GenePoolStateT[F, Genome[W, I, O]] =
+    chance(weightChance)(mutateWeight[F, W, I, O]).apply(g)
+      >>= chance(connectionChance)(mutateAddConnection)
+      >>= chance(nodeChance)(mutateAddNode)
 end GenePool
