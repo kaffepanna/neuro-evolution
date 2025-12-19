@@ -1,11 +1,13 @@
 package se.randomserver.ne
 import cats.*
 import cats.data.{State, StateT}
-import cats.effect.std.Random
+import cats.effect.std.{QueueSource, Random}
 import cats.effect.{ExitCode, IO, IOApp}
 import cats.syntax.all.{*, given}
 import se.randomserver.ne.genome.GenePool.{GenePoolStateT, cross, mutate, given}
 import se.randomserver.ne.genome.{Gene, GenePool, Genome}
+import se.randomserver.ne.graphviz.GraphViz.edge_
+import se.randomserver.ne.graphviz.{GraphViz, StringCompiler}
 import se.randomserver.ne.phenotype.Individual
 import se.randomserver.ne.phenotype.Individual.*
 
@@ -57,6 +59,32 @@ object App extends IOApp {
   private def constructor(using Random[IO]): GenePoolStateT[IO, Genome[Double, 2, 1]] =
     GenePool.genome[IO, Double, 2, 1]
 
+  def plotGenome(g: Genome[Double, 2, 1]): GraphViz.Grammar[Unit] = {
+    import GraphViz._
+    digraph {
+      for {
+        inputs <- subgraph("cluster_inputs") {
+          g.inputs.toList.map(nid => node(nid.toString)).sequence
+        }
+        hidden <- subgraph("cluster_hidden") {
+          g.hidden.toList.map(nid => node(nid.toString)).sequence
+        }
+        outputs <- subgraph("cluster_output") {
+          g.outputs.toList.map(nid => node(nid.toString)).sequence
+        }
+        bias <- subgraph("cluster_bias") {
+          g.bias.toList.map(nid => node(nid.toString)).sequence
+        }
+        edges <- g.genes
+          .filter(gene => gene.enabled)
+          .toList
+          .map { gene =>
+            edge_(gene.from.toString, gene.to.toString, "label" -> s"w: ${String.format("%f", gene.weight)}")
+          }.sequence
+      } yield ()
+    }
+  }
+
   override def run(args: List[String]): IO[ExitCode] = Random.scalaUtilRandom[IO].flatMap { random =>
     given Random[IO] = random
 
@@ -92,7 +120,7 @@ object App extends IOApp {
     val state = for {
       initialPopulation <- constructor.replicateA(popsize)
 
-      endpool <- 1.to(50).toList.foldM(initialPopulation) { case (pool, _) =>
+      endpool <- 1.to(1000).toList.foldM(initialPopulation) { case (pool, _) =>
         val spiecies = classify(pool).map(scores(data)).map(_.sortBy(_._2).reverse)
 
         val operations = spiecies.flatMap { klass =>
@@ -100,7 +128,7 @@ object App extends IOApp {
           val breeders = klass.take(breed)
           val bred = breeders.flatMap { case (genome, _) =>
             breeders.map { case (genome2, _) =>
-              cross[IO, Double, 2, 1](genome, genome2) >>= mutate(0.7, 0.04, 0.01)
+              cross[IO, Double, 2, 1](genome, genome2) >>= mutate(0.7, 0.4, 0.01)
             }
           }
           val breedersPure: Seq[GenePoolStateT[IO, Genome[Double, 2, 1]]] = breeders.map(_._1).map(g => g.pure)
@@ -121,7 +149,11 @@ object App extends IOApp {
             IO.println("\t" ++ result)
           }
       }.sequence
+
+      graph  = scored.filter(s => s._2 > 0.9).map(w => plotGenome(w._1).foldMap(StringCompiler.compiler()).run._1)
+      _ <- GenePool.liftF(graph.map(IO.println(_)).sequence)
     } yield ()
+
 
     GenePool.run(GenePool(0, Map.empty))(state).map(_ => ExitCode.Success)
   }

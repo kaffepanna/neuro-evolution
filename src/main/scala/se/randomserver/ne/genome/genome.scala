@@ -93,10 +93,15 @@ object GenePool:
   @unused
   def mutateAddConnection[F[_]: Monad, W, I <: Int, O <: Int](genome: Genome[W, I, O])(using r: Random[F], RR: RandomRange[F, W]): GenePoolStateT[F, Genome[W, I, O]] = for
     from <- StateT.liftF { r.betweenInt(genome.nodes.start, genome.nodes.end) }
-    to <- StateT.liftF { r.betweenInt(genome.nodes.start, genome.nodes.end) }
-    result <- if genome.genes.exists(g => g.from == from && g.to == to) then StateT.pure(genome)
-              else if from == to then StateT.pure(genome)
-              else newConnection(from, to).map(g => genome.copy(genes = genome.genes + g))
+    to = from match {
+      case _ if genome.inputs.contains(from) => (genome.outputs ++ genome.hidden).toSeq
+      case _ if genome.hidden.contains(from) => genome.outputs.toSeq
+      case _ if genome.bias.contains(from)   => (genome.inputs ++ genome.hidden ++ genome.outputs).toSeq
+      case _ if genome.outputs.contains(from) => Seq.empty
+    }
+    to <- StateT.liftF { r.shuffleList(to.toList).map(_.headOption) }
+    result <- if to.isEmpty then StateT.pure(genome)
+              else newConnection(from, to.get).map(g => genome.copy(genes = genome.genes + g))
   yield result
 
   @unused
@@ -118,8 +123,8 @@ object GenePool:
     for {
       conn <- StateT.liftF { r.shuffleList(genome.genes.toList.filter(_.enabled)).map(_.head) }
       change <- StateT.liftF(RR.get)
-      weightChanged = (fromInt(-2), (fromInt(2), conn.weight + change).maximum).minimum
-      updated = conn.copy(weight = conn.weight + weightChanged)
+      weightChanged = (fromInt(-2), (fromInt(2), conn.weight + change).minimum).maximum
+      updated = conn.copy(weight = weightChanged)
     } yield genome.copy(genes = genome.genes - conn + updated)
   }
 
