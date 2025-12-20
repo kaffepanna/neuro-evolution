@@ -49,13 +49,19 @@ object App extends IOApp {
       List(1.0, 1.0) -> List(1.0)
     )
 
-    val data = xor
+    val data = and
 
-    val popsize = 10
-    val breed = 2
-    val gens = 1000
+    val generations = 400
     val defaultBias = 1.0d
-    val threshold = 0.9
+
+    val popSize       = 200
+    val speciationThreshold = 0.8  // genomes with compare < 0.8 are in the same species
+    val eliteFraction = 0.05        // keep top 10% of each species unmodified
+
+    val weightChance     = 0.8   // perturb 80% of existing weights
+    val resetChance      = 0.05  // reset 5% of weights to new random
+    val connectionChance = 0.25   // add a new connection 20% of the time
+    val nodeChance       = 0.02  // add a new node 5% of the time
 
     // transfer function for Double genomes
     def transferFn(x: Double) = 1.0d / (1.0d + Math.exp(-x))
@@ -67,7 +73,19 @@ object App extends IOApp {
       1 - Math.sqrt(totalSumsq / outputsList.size)
 
     // Run evolution and get top performers per species above minScore (Some(0.9) here)
-    GenePool.run(GenePool(0, Map.empty))(Evolution.evolve[Double, 2, 1, Double](data, transferFn, fitnessFn, popsize, breed, gens, defaultBias, Some(0.9))).flatMap {
+    GenePool.run(GenePool(0, Map.empty))(Evolution.evolve[Double, 2, 1, Double](data,
+      transferFn,
+      fitnessFn,
+      popSize,
+      generations,
+      defaultBias,
+      weightChance,
+      resetChance,
+      connectionChance,
+      nodeChance,
+      speciationThreshold,
+      eliteFraction,
+      minScore = Some(0.85))).flatMap {
       case (_, winners) =>
 
         val graphIO = winners.map { case (genome, _) =>

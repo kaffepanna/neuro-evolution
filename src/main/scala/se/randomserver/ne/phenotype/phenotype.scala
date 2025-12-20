@@ -52,7 +52,7 @@ object Individual:
       case None =>
         val connections = genome.genes.filter(gene => gene.to == i && gene.enabled)
         assert(!visited.contains(i), "Circular")
-        assert(connections.nonEmpty, "Cannot evaluate node without inputs")
+        //assert(connections.nonEmpty, "Cannot evaluate node without inputs")
         connections.map { gene =>
           nodeValue(gene.from, visited + i).flatMap { n =>
             State.pure(gene.weight * n)

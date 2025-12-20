@@ -11,91 +11,142 @@ import se.randomserver.ne.genome.{GenePool, Genome}
 import se.randomserver.ne.phenotype.Individual
 import se.randomserver.ne.phenotype.Individual.*
 
+import scala.math.Fractional.Implicits.infixFractionalOps
+
 object Evolution:
 
-  private def classify[W, I <: Int, O <: Int](population: List[Genome[W, I, O]])(using F: Fractional[W]): List[List[Genome[W, I, O]]] =
+  private def classify[W, I <: Int, O <: Int](population: List[Genome[W, I, O]], speciationThreshold: Double)(using F: Fractional[W]): List[List[Genome[W, I, O]]] =
     population match
       case archetype :: Nil => List(List(archetype))
       case archetype :: rest =>
         val (classified, tobe) = rest.foldLeft(List(archetype) -> List.empty[Genome[W, I, O]]) {
-          case ((same, rest), g) => if g.compare(archetype) < 0.5 then (g :: same, rest)
-                                                                  else (same, g :: rest)
+          case ((same, rest), g) => if g.compare(archetype) < speciationThreshold then (g :: same, rest)
+                                                                                  else (same, g :: rest)
         }
-        classified :: classify(tobe)
+        classified :: classify(tobe, speciationThreshold)
       case _ => List()
 
   private def constructor[W, I <: Int, O <: Int](using r: Random[IO], rr: RandomRange[IO, W], vI: ValueOf[I], vO: ValueOf[O]): GenePoolStateT[IO, Genome[W, I, O]] =
     GenePool.genome[IO, W, I, O]
 
 
-  def evolve[W: Order: Numeric, I <: Int: ValueOf, O <: Int: ValueOf, S: Ordering](
-    data: Set[(List[W], List[W])],
-    transfer: W => W,
-    fitnessFn: (List[List[W]], List[List[W]]) => S,
-    popsize: Int,
-    breed: Int,
-    gens: Int,
-    defaultBias: W,
-    minScore: Option[S]
-  )(using r: Random[IO], rr: RandomRange[IO, W], f: Fractional[W]): GenePoolStateT[IO, List[(Genome[W, I, O], S)]] =
+  def evolve[W: Order: Numeric, I <: Int: ValueOf, O <: Int: ValueOf, S: Numeric: Ordering: Fractional](
+      data: Set[(List[W], List[W])],
+      transfer: W => W,
+      fitnessFn: (List[List[W]], List[List[W]]) => S,
+      popsize: Int,
+      generations: Int,
+      defaultBias: W,
+      weightChance: Double,
+      resetChance: Double,
+      connectionChance: Double,
+      nodeChance: Double,
+      speciationThreshold: Double,
+      eliteFraction: Double,
+      minScore: Option[S]
+  )(using r: Random[IO], rr: RandomRange[IO, W], f: Fractional[W]): GenePoolStateT[IO, List[(Genome[W, I, O], S)]] = {
+
+    import GenePool.{*, given}
+
+    // Step 0: Type alias for readability
+    type GState[A] = GenePoolStateT[IO, A]
+
     for {
-      initialPopulation <- constructor[W, I, O].replicateA(popsize)
 
-      endpool <- 1.to(gens).toList.foldM(initialPopulation) { case (pool, _) =>
-        // compute scores by evaluating each genome over the full dataset, then calling the provided fitnessFn
-        val spiecies = classify(pool).map { pop =>
-          pop.map { g =>
-            val outputsList: List[List[W]] = data.toList.map { case (inputs, _) => Individual.evaluate(g, transfer, inputs, defaultBias) }
-            val expectedList: List[List[W]] = data.toList.map { case (_, expected) => expected }
-            val score: S = fitnessFn(outputsList, expectedList)
-            g -> score
+      // Step 1: Initialize population
+      initialPopulation: List[Genome[W, I, O]] <- constructor[W, I, O].replicateA(popsize)
+
+      // Step 2: Evolve generations
+      finalPopulation: List[Genome[W, I, O]] <- (1 to generations).toList.foldM(initialPopulation) { (pop, gen) =>
+        // Step 2a: Evaluate fitness for each genome
+        val evaluatedSpecies: List[List[(Genome[W, I, O], S)]] =
+          classify(pop, speciationThreshold).map { species =>
+            species.map { g =>
+              val outputs: List[List[W]] = data.toList.map { case (inputs, _) =>
+                Individual.evaluate(g, transfer, inputs, defaultBias)
+              }
+              val expected: List[List[W]] = data.toList.map { case (_, exp) => exp }
+              val score: S = fitnessFn(outputs, expected)
+              g -> score
+            }.sortBy(_._2)(Ordering[S].reverse)
           }
-        }.map(_.sortBy(_._2).reverse)
 
-        val operations = spiecies.flatMap { klass =>
+          
+        for {
+          // Diagnostic logging inside the monad
+          _ <- GenePool.liftF(IO.println(s"Generation $gen: species sizes = ${evaluatedSpecies.map(_.size)}"))
 
-          val breeders = klass.take(breed)
-          val breedersPure: Seq[GenePoolStateT[IO, Genome[W, I, O]]] = breeders.map(_._1).map(g => g.pure)
+          allScores = evaluatedSpecies.flatten.map(_._2)
+          bestScore  = allScores.max
+          worstScore = allScores.min
+          avgScore   = Numeric[S].toDouble(allScores.sum) / allScores.size.toDouble
 
-          // Number of genomes we need to produce for this species to keep the same size
-          val needed = klass.size - breedersPure.size
+          speciesScores = evaluatedSpecies.map(s => s.map(_._2).sum)
+          totalFitness = speciesScores.sum
 
-          val children: Seq[GenePoolStateT[IO, Genome[W, I, O]]] =
-            if (needed <= 0) Seq.empty
-            else if (breeders.size >= 2) {
-              val pairChildren: Seq[GenePoolStateT[IO, Genome[W, I, O]]] = for {
-                (g1, _) <- breeders
-                (g2, _) <- breeders
-              } yield cross[IO, W, I, O](g1, g2) >>= mutate[IO, W, I, O](0.7, 0.4, 0.01)
+          _ <- GenePool.liftF(IO.println(f"Generation $gen: best=$bestScore, worst=$worstScore, avg=$avgScore%.3f"))
+          nextGenPerSpecies: List[List[GState[Genome[W, I, O]]]] = evaluatedSpecies.map { klass =>
 
-              if (pairChildren.isEmpty) Seq.empty
-              else Iterator.continually(pairChildren).flatten.take(needed).toSeq
-            } else if (breeders.size == 1) {
-              Seq.fill(needed)(breeders.head._1.pure)
-            } else {
-              val clones: Seq[GenePoolStateT[IO, Genome[W, I, O]]] = klass.map { case (g, _) => g.pure }
-              if (clones.isEmpty) Seq.empty
-              else Iterator.continually(clones).flatten.take(needed).toSeq
-            }
+            // Elites
+            val elites: List[GState[Genome[W, I, O]]] = klass.take((klass.size * eliteFraction).ceil.toInt).map { case (g, _) => pure(g) }
 
-          (breedersPure ++ children).take(klass.size)
-        }
-        operations.sequence
+            val breed = elites.size
+            val speciesScore = klass.map(_._2).sum
+            val speciesShare = Numeric[S].toDouble(speciesScore / totalFitness) * popsize
+            val needed: Int = speciesShare.round.toInt - elites.size
+
+            val children: List[GState[Genome[W, I, O]]] =
+              if (needed <= 0) Nil
+              else if (klass.size >= 2) {
+                val breeders: List[(Genome[W, I, O], S)] = klass.take(breed)
+                List.fill(needed) {
+                  for {
+                    // Pick two random breeders
+                    i1: Int <- liftF(r.nextIntBounded(breed))
+                    i2: Int <- liftF(r.nextIntBounded(breed))
+                    (g1, s1) = breeders(i1)
+                    (g2, s2) = breeders(i2)
+
+                    // Determine dominant and recessive
+                    (dominant, recessive) =
+                      if (Ordering[S].gteq(s1, s2)) (g1, g2)
+                      else (g2, g1)
+
+                    // Crossover + mutation
+                    offspring <- cross[IO, W, I, O](dominant, recessive) >>=
+                                mutate[IO, W, I, O](weightChance, connectionChance, nodeChance, resetChance)
+                  } yield offspring
+                }
+              } else if (klass.size == 1) {
+                List.fill(needed)(pure(klass.head._1))
+              } else Nil
+
+            (elites ++ children).take(klass.size)
+          }
+          nextGen: List[Genome[W, I, O]] <- nextGenPerSpecies.flatten.sequence
+        } yield nextGen
       }
 
-      scored = classify(endpool).map { pop =>
-        pop.map { g =>
-          val outputsList: List[List[W]] = data.toList.map { case (inputs, _) => Individual.evaluate(g, transfer, inputs, defaultBias) }
-          val expectedList: List[List[W]] = data.toList.map { case (_, expected) => expected }
-          val score: S = fitnessFn(outputsList, expectedList)
-          g -> score
+      // Step 3: Final evaluation
+      finalEvaluated: List[(Genome[W, I, O], S)] =
+        classify(finalPopulation, speciationThreshold).map { species =>
+          species.map { g =>
+            val outputs: List[List[W]] = data.toList.map { case (inputs, _) =>
+              Individual.evaluate(g, transfer, inputs, defaultBias)
+            }
+            val expected: List[List[W]] = data.toList.map { case (_, exp) => exp }
+            val score: S = fitnessFn(outputs, expected)
+            g -> score
+          }.sortBy(_._2).head
         }
-      }.map(list => list.maxBy(_._2)).sortBy(_._2)
 
-      // Return top performer per species that passes the optional minScore
-      winners = minScore match
-        case Some(ms) => scored.filter { case (_, s) => Ordering[S].gteq(s, ms) }
-        case None     => scored
-    } yield winners
+      // Step 4: Filter winners by minScore
+      winners: List[(Genome[W, I, O], S)] = minScore match {
+        case Some(ms) => finalEvaluated.filter { case (_, s) => Ordering[S].gteq(s, ms) }
+        case None     => finalEvaluated
+      }
+
+    } yield winners.sortBy(g => g._1.nodes.size)
+  }
 
 end Evolution

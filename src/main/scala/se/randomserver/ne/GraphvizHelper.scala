@@ -27,11 +27,11 @@ object GraphvizHelper:
         outputs <- subgraph("cluster_output") {
           g.outputs.toList.map(nid => node(nid.toString)).sequence
         }
-        //bias <- subgraph("cluster_bias") {
-        //  g.bias.toList.map(nid => node(nid.toString)).sequence
-        //}
+        bias <- subgraph("cluster_bias") {
+          g.bias.toList.map(nid => node(nid.toString)).sequence
+        }
         edges <- g.genes
-          .filter(gene => gene.enabled && gene.from != g.bias.start && gene.to != g.bias.start)
+          .filter(gene => gene.enabled)
           .toList
           .map { gene =>
             edge_(gene.from.toString, gene.to.toString, "label" -> s"w: ${String.format("%f", gene.weight)}")
