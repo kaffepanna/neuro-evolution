@@ -67,4 +67,12 @@ object Individual:
     individual <- State.get[Individual[W, I, O]]
     outputs <- individual.genome.outputs.map(i => nodeValue(i)).toList.sequence
   yield outputs.toSeq
+
+  def evaluate[W: Fractional, I <: Int, O <: Int](genome: Genome[W, I, O], transfer: W => W, inputs: List[W], biasValue: W): List[W] =
+    val bias = genome.bias.map(_ => biasValue)
+    (Individual.from(genome, transfer) >> {
+      Individual.setInputs(inputs)
+        >> Individual.setBias(bias)
+        >> Individual.getOutputs
+    })._2.toList
 end Individual

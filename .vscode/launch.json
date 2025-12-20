@@ -1,0 +1,25 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "scala",
+      "request": "launch",
+      "name": "TestMain",
+      "mainClass": "se.randomserver.ne.TestMain",
+      "buildTarget": "file:/home/patrik/sources/neuro-evolution/?id=root",
+      "args": [],
+      "jvmOptions": [],
+      "env": {}
+    },
+    {
+      "type": "scala",
+      "request": "launch",
+      "name": "App",
+      "mainClass": "se.randomserver.ne.App",
+      "buildTarget": "file:/home/patrik/sources/neuro-evolution/?id=root",
+      "args": [],
+      "jvmOptions": [],
+      "env": { "DISPLAY": ":0" }
+    }
+  ]
+}
