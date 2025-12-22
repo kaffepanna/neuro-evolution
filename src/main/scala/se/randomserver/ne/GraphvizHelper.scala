@@ -47,7 +47,6 @@ object GraphvizHelper:
           feh <- ProcessBuilder("feh", "-").withExtraEnv(Map("DISPLAY" -> ":0")).spawn[F]
       } yield feh -> dot).use {case (feh, dot) =>
           val in = Stream.emit(graph + "\n")
-                      .debug(i => s"Graphviz input $i")
                       .through(text.utf8.encode)
                       .through(dot.stdin)
           val pipe = dot.stdout
@@ -56,11 +55,8 @@ object GraphvizHelper:
 
           for {
               a <- pipe.compile.string
-              _ = println(s"feh output: $a")
               fehExit <- feh.exitValue
-              _ = println(s"Feh exited with $fehExit")
               dotExit <- dot.exitValue
-              _ = println(s"Dot exited with $dotExit")
           } yield a
       }
     }

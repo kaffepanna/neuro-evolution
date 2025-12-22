@@ -16,52 +16,51 @@ import scala.annotation.unused
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Future}
+import se.randomserver.ne.evolution.EvolutionConfig
+import se.randomserver.ne.genome.SpeciationConfig
+import pureconfig.ConfigReader
+import pureconfig.ConfigSource
+import pureconfig.module.catseffect.syntax.{*, given}
 
+import se.randomserver.ne.graphviz.GraphViz
+
+case class AppConfig(
+  evolution: EvolutionConfig,
+  ranges: RandomRangeConfig,
+  speciation: SpeciationConfig,
+) derives ConfigReader
 
 object App extends IOApp {
 
+  @unused
+  val xor = Set(
+    List(0.0, 0.0) -> List(0.0),
+    List(1.0, 0.0) -> List(1.0),
+    List(0.0, 1.0) -> List(1.0),
+    List(1.0, 1.0) -> List(0.0)
+  )
+
+  @unused
+  val and = Set(
+    List(0.0, 0.0) -> List(0.0),
+    List(1.0, 0.0) -> List(0.0),
+    List(0.0, 1.0) -> List(0.0),
+    List(1.0, 1.0) -> List(1.0)
+  )
+
+  @unused
+  val or = Set(
+    List(0.0, 0.0) -> List(0.0),
+    List(1.0, 0.0) -> List(1.0),
+    List(0.0, 1.0) -> List(1.0),
+    List(1.0, 1.0) -> List(1.0)
+  )
+
   // Evolution logic is moved to `se.randomserver.ne.evolution.Evolution`.
 
-  override def run(args: List[String]): IO[ExitCode] = Random.scalaUtilRandom[IO].flatMap { random =>
-    given Random[IO] = random
+  override def run(args: List[String]): IO[ExitCode] = {
 
-    @unused
-    val xor = Set(
-      List(0.0, 0.0) -> List(0.0),
-      List(1.0, 0.0) -> List(1.0),
-      List(0.0, 1.0) -> List(1.0),
-      List(1.0, 1.0) -> List(0.0)
-    )
-
-    @unused
-    val and = Set(
-      List(0.0, 0.0) -> List(0.0),
-      List(1.0, 0.0) -> List(0.0),
-      List(0.0, 1.0) -> List(0.0),
-      List(1.0, 1.0) -> List(1.0)
-    )
-
-    @unused
-    val or = Set(
-      List(0.0, 0.0) -> List(0.0),
-      List(1.0, 0.0) -> List(1.0),
-      List(0.0, 1.0) -> List(1.0),
-      List(1.0, 1.0) -> List(1.0)
-    )
-
-    val data = and
-
-    val generations = 400
-    val defaultBias = 1.0d
-
-    val popSize       = 200
-    val speciationThreshold = 0.8  // genomes with compare < 0.8 are in the same species
-    val eliteFraction = 0.05        // keep top 10% of each species unmodified
-
-    val weightChance     = 0.8   // perturb 80% of existing weights
-    val resetChance      = 0.05  // reset 5% of weights to new random
-    val connectionChance = 0.25   // add a new connection 20% of the time
-    val nodeChance       = 0.02  // add a new node 5% of the time
+    val data = xor
 
     // transfer function for Double genomes
     def transferFn(x: Double) = 1.0d / (1.0d + Math.exp(-x))
@@ -72,27 +71,35 @@ object App extends IOApp {
       val totalSumsq = outputsList.zip(expectedList).map { case (outs, exp) => outs.zip(exp).map { case (a,b) => Math.pow(a-b, 2) }.sum }.sum
       1 - Math.sqrt(totalSumsq / outputsList.size)
 
-    // Run evolution and get top performers per species above minScore (Some(0.9) here)
-    GenePool.run(GenePool(0, Map.empty))(Evolution.evolve[Double, 2, 1, Double](data,
-      transferFn,
-      fitnessFn,
-      popSize,
-      generations,
-      defaultBias,
-      weightChance,
-      resetChance,
-      connectionChance,
-      nodeChance,
-      speciationThreshold,
-      eliteFraction,
-      minScore = Some(0.85))).flatMap {
-      case (_, winners) =>
+    for {
+      appConfig <- ConfigSource.defaultApplication.loadF[IO, AppConfig]()
 
-        val graphIO = winners.map { case (genome, _) =>
-          GraphvizHelper.plotGenome[IO](genome)
-        }.sequence
+      AppConfig(evCfg, rCfg, sCfg) = appConfig
 
-        graphIO.as(ExitCode.Success)
-    }
+      rnd <- Random.scalaUtilRandom[IO]
+      given Random[IO] = rnd
+      given RandomRange[IO, Double] = RandomRange(rCfg)
+
+      initialPool = GenePool(0, Map.empty)
+      winners <- GenePool.run(initialPool) {
+        Evolution.evolve[Double, 2, 1, Double](
+          data,
+          transferFn,
+          fitnessFn,
+          evCfg.populationSize,
+          evCfg.generations,
+          evCfg.defaultBias,
+          evCfg.weightChance,
+          evCfg.resetChance,
+          evCfg.connectionChance,
+          evCfg.nodeChance,
+          evCfg.eliteFraction,
+          evCfg.targetFitness,
+          sCfg
+        )
+      }.map(_._2)
+
+      a <- (for(winner <- winners) yield GraphvizHelper.plotGenome[IO](winner._1)).sequence
+    } yield (ExitCode.Success)
   }
 }

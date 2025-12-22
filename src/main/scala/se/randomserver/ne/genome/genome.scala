@@ -10,6 +10,7 @@ import se.randomserver.ne.RandomRange.given
 import se.randomserver.ne.genome.GenePool.GenePoolStateT
 
 import scala.annotation.unused
+import pureconfig.ConfigReader
 
 case class Gene[W](innovation: Long, from: Int, to: Int, weight: W, enabled: Boolean = true) {
   // override def equals(obj: Any): Boolean = obj match
@@ -19,10 +20,17 @@ case class Gene[W](innovation: Long, from: Int, to: Int, weight: W, enabled: Boo
   // override def hashCode(): Int = (from, to).hashCode() + 65300
 }
 
+case class SpeciationConfig(
+  c1: Double,
+  c2: Double,
+  c3: Double,
+  threshold: Double
+) derives ConfigReader
+
 object Genome:
-  val C1 = 4.0 // excess factor
-  val C2 = 3.0 // disjoint factor
-  val C3 = 0.9 // weight difference factor
+  // val C1 = 4.0 // excess factor
+  // val C2 = 3.0 // disjoint factor
+  // val C3 = 0.9 // weight difference factor
 end Genome
 
 
@@ -36,9 +44,13 @@ case class Genome[W, I <: Int, O <: Int](nInputs: I, nOutputs: O, genes: Set[Gen
   )
   val nodes:   Range.Exclusive = Range(bias.start, hidden.end)
 
-  def compare(rhs: Genome[W, I, O])(using F: Fractional[W]): Double =
+  def compare(rhs: Genome[W, I, O], cfg: SpeciationConfig)(using F: Fractional[W]): Double =
     import F.*
     import Genome.*
+
+    val C1 = cfg.c1
+    val C2 = cfg.c2
+    val C3 = cfg.c3
 
     val genesThis = this.genes.toList.sortBy(_.innovation)
     val genesRhs  = rhs.genes.toList.sortBy(_.innovation)

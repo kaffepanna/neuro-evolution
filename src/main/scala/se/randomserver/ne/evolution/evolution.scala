@@ -12,18 +12,19 @@ import se.randomserver.ne.phenotype.Individual
 import se.randomserver.ne.phenotype.Individual.*
 
 import scala.math.Fractional.Implicits.infixFractionalOps
+import se.randomserver.ne.genome.SpeciationConfig
 
 object Evolution:
 
-  private def classify[W, I <: Int, O <: Int](population: List[Genome[W, I, O]], speciationThreshold: Double)(using F: Fractional[W]): List[List[Genome[W, I, O]]] =
+  private def classify[W, I <: Int, O <: Int](cfg: SpeciationConfig)(population: List[Genome[W, I, O]])(using F: Fractional[W]): List[List[Genome[W, I, O]]] =
     population match
       case archetype :: Nil => List(List(archetype))
       case archetype :: rest =>
         val (classified, tobe) = rest.foldLeft(List(archetype) -> List.empty[Genome[W, I, O]]) {
-          case ((same, rest), g) => if g.compare(archetype) < speciationThreshold then (g :: same, rest)
+          case ((same, rest), g) => if g.compare(archetype, cfg) < cfg.threshold then (g :: same, rest)
                                                                                   else (same, g :: rest)
         }
-        classified :: classify(tobe, speciationThreshold)
+        classified :: classify(cfg)(tobe)
       case _ => List()
 
   private def constructor[W, I <: Int, O <: Int](using r: Random[IO], rr: RandomRange[IO, W], vI: ValueOf[I], vO: ValueOf[O]): GenePoolStateT[IO, Genome[W, I, O]] =
@@ -41,9 +42,9 @@ object Evolution:
       resetChance: Double,
       connectionChance: Double,
       nodeChance: Double,
-      speciationThreshold: Double,
       eliteFraction: Double,
-      minScore: Option[S]
+      minScore: Option[S],
+      speciationConfig: SpeciationConfig
   )(using r: Random[IO], rr: RandomRange[IO, W], f: Fractional[W]): GenePoolStateT[IO, List[(Genome[W, I, O], S)]] = {
 
     import GenePool.{*, given}
@@ -60,7 +61,7 @@ object Evolution:
       finalPopulation: List[Genome[W, I, O]] <- (1 to generations).toList.foldM(initialPopulation) { (pop, gen) =>
         // Step 2a: Evaluate fitness for each genome
         val evaluatedSpecies: List[List[(Genome[W, I, O], S)]] =
-          classify(pop, speciationThreshold).map { species =>
+          classify(speciationConfig)(pop).map { species =>
             species.map { g =>
               val outputs: List[List[W]] = data.toList.map { case (inputs, _) =>
                 Individual.evaluate(g, transfer, inputs, defaultBias)
@@ -129,7 +130,7 @@ object Evolution:
 
       // Step 3: Final evaluation
       finalEvaluated: List[(Genome[W, I, O], S)] =
-        classify(finalPopulation, speciationThreshold).map { species =>
+        classify(speciationConfig)(finalPopulation).map { species =>
           species.map { g =>
             val outputs: List[List[W]] = data.toList.map { case (inputs, _) =>
               Individual.evaluate(g, transfer, inputs, defaultBias)
@@ -137,13 +138,17 @@ object Evolution:
             val expected: List[List[W]] = data.toList.map { case (_, exp) => exp }
             val score: S = fitnessFn(outputs, expected)
             g -> score
-          }.sortBy(_._2).head
+          }.maxBy(_._2)
         }
 
       // Step 4: Filter winners by minScore
       winners: List[(Genome[W, I, O], S)] = minScore match {
         case Some(ms) => finalEvaluated.filter { case (_, s) => Ordering[S].gteq(s, ms) }
         case None     => finalEvaluated
+      }
+
+      _ = {
+        println(winners)
       }
 
     } yield winners.sortBy(g => g._1.nodes.size)
