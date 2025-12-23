@@ -110,6 +110,10 @@ object GenePool:
 
   def run[F[_]: FlatMap, A](initial: GenePool)(runner: GenePoolStateT[F, A]): F[(GenePool, A)] = runner.run(initial)
 
+  extension [F[_], A](et: GenePoolStateT[F, A])
+    def run(gp: GenePool)(using F: Monad[F]) =
+      et.run(gp)
+
   def nextNodeId[F[_]: Applicative]: GenePoolStateT[F, Int] = StateT(state =>
     (state.copy(nextId = state.nextId + 1) -> state.nextId).pure[F]
   )

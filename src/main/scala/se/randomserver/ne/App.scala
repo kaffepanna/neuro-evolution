@@ -6,7 +6,6 @@ import cats.effect.{ExitCode, IO, IOApp}
 import cats.syntax.all.{*, given}
 import se.randomserver.ne.genome.GenePool.{GenePoolStateT, given}
 import se.randomserver.ne.genome.{GenePool, Genome}
-import se.randomserver.ne.evolution.Evolution
 import se.randomserver.ne.phenotype.Individual
 import se.randomserver.ne.phenotype.Individual.*
 import se.randomserver.ne.graphviz.StringCompiler
@@ -23,6 +22,8 @@ import pureconfig.ConfigSource
 import pureconfig.module.catseffect.syntax.{*, given}
 
 import se.randomserver.ne.graphviz.GraphViz
+import se.randomserver.ne.evolution.Evolution.EvolutionEnv
+import se.randomserver.ne.evolution.Evolution.{*, given}
 
 case class AppConfig(
   evolution: EvolutionConfig,
@@ -80,26 +81,34 @@ object App extends IOApp {
       given Random[IO] = rnd
       given RandomRange[IO, Double] = RandomRange(rCfg)
 
-      initialPool = GenePool(0, Map.empty)
-      winners <- GenePool.run(initialPool) {
-        Evolution.evolve[Double, 2, 1, Double](
-          data,
-          transferFn,
-          fitnessFn,
-          evCfg.populationSize,
-          evCfg.generations,
-          evCfg.defaultBias,
-          evCfg.weightChance,
-          evCfg.resetChance,
-          evCfg.connectionChance,
-          evCfg.nodeChance,
-          evCfg.eliteFraction,
-          evCfg.targetFitness,
-          sCfg
-        )
-      }.map(_._2)
+      evolutionEnv = EvolutionEnv[Double, Double](
+        data.toList,
+        transferFn,
+        fitnessFn,
+        popsize = evCfg.populationSize,
+        generations = evCfg.generations,
+        defaultBias = evCfg.defaultBias,
+        weightChance = evCfg.weightChance,
+        resetChance = evCfg.resetChance,
+        connectionChance = evCfg.connectionChance,
+        nodeChance = evCfg.nodeChance,
+        eliteFraction = evCfg.eliteFraction,
+        minScore = evCfg.targetFitness,
+        speciationConfig = sCfg,
+      )
 
-      a <- (for(winner <- winners) yield GraphvizHelper.plotGenome[IO](winner._1)).sequence
+      evolutionState = EvolutionState[Double, 2, 1, Double](
+        Vector.empty, 0
+      )
+
+      genePoolState = GenePool(0, Map.empty)
+
+      finalState <- evolve[IO, Double, 2, 1, Double]().runEvolution(evolutionEnv, evolutionState, genePoolState).map(_._2._1)
+      _ = { println(finalState) }
+      winners = finalState.species.map { species =>
+        species.members.maxByOption(m => m.rawFitness)
+      }.flatten.filter(m => m.rawFitness.exists(_ > 0.85)).map(_.genome)
+      _ <- (for(winner <- winners) yield GraphvizHelper.plotGenome[IO](winner)).sequence
     } yield (ExitCode.Success)
   }
 }
