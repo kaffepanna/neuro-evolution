@@ -17,7 +17,7 @@ import cats.Order
 import se.randomserver.ne.genome.GenePool.{*, given}
 import se.randomserver.ne.genome.GenePool
 import se.randomserver.ne.evolution.EvolutionConfig
-import se.randomserver.ne.evaluator.Evaluator.eval
+import se.randomserver.ne.evaluator.Evaluator.evalOnce
 import se.randomserver.ne.evaluator.Evaluator
 
 object Evolution {
@@ -108,8 +108,9 @@ object Evolution {
             val compiled = Evaluator.compile(genome, env.transfer)
             val outputs = env.data.map { case (inputs, _) =>
               val in =  compiled.inputs.zip(inputs).toMap
-              val evaluation = Evaluator.eval(compiled, in, env.defaultBias)
-              compiled.outputs.map(evaluation).toList
+              val evaluation = Evaluator.evalOnce(compiled, in, env.defaultBias)
+              //compiled.outputs.map(evaluation).toList
+              evaluation.toList
             }
             
             val score = env.fitnessFn(outputs, expected)

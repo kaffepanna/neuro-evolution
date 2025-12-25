@@ -23,52 +23,64 @@ object Evaluator {
     transfer: W => W
   )
 
+  final case class ActivationState[W](values: Vector[W])
+
+  extension [W](v: Vector[W])
+    def updateAll(map: Map[Int, W]): Vector[W] = map.foldLeft(v) {
+      case (v, i) => v.updated(i._1, i._2)
+    }
+
   def topoSort[W, I <: Int, O <: Int](
     genome: Genome[W, I, O]
   ): Vector[Int] = {
 
-    val enabledGenes = genome.genes.filter(_.enabled)
+    val nodes = genome.nodes.toVector
+    val edges = genome.genes.filter(_.enabled).map(g => g.from -> g.to)
 
-    val incomingCount =
-      enabledGenes
-        .groupBy(_.to)
-        .view
-        .mapValues(_.size)
-        .toMap
-        .withDefaultValue(0)
+    // 1. Initialize indegree for ALL nodes
+    val indegree0 =
+      nodes.map(_ -> 0).toMap
 
+    val indegree =
+      edges.foldLeft(indegree0) {
+        case (m, (_, to)) => m.updated(to, m(to) + 1)
+      }
+
+    // 2. Adjacency list
     val outgoing =
-      enabledGenes
-        .groupBy(_.from)
-        .view
-        .mapValues(_.map(_.to))
-        .toMap
+      edges.groupBy(_._1).view.mapValues(_.map(_._2)).toMap
         .withDefaultValue(Vector.empty)
 
-    val start =
-      genome.nodes.filter(n => incomingCount(n) == 0)
-
+    // 3. Kahn's algorithm
     @annotation.tailrec
     def loop(
       queue: Vector[Int],
-      inCount: Map[Int, Int],
+      indeg: Map[Int, Int],
       acc: Vector[Int]
     ): Vector[Int] =
       queue match {
         case Vector() => acc
         case n +: rest =>
-          val (nextQueue, nextCount) =
-            outgoing(n).foldLeft(rest -> inCount) {
-              case ((q, cnt), m) =>
-                val c = cnt(m) - 1
-                if (c == 0) (q :+ m, cnt.updated(m, 0))
-                else (q, cnt.updated(m, c))
+          val (newIndeg, newlyZero) =
+            outgoing(n).foldLeft((indeg, Vector.empty[Int])) {
+              case ((m, zs), to) =>
+                val d = m(to) - 1
+                val m2 = m.updated(to, d)
+                if (d == 0) (m2, zs :+ to) else (m2, zs)
             }
 
-          loop(nextQueue, nextCount, acc :+ n)
+          loop(rest ++ newlyZero, newIndeg, acc :+ n)
       }
 
-    loop(start.toVector, incomingCount, Vector.empty)
+    val start = indegree.collect { case (n, 0) => n }.toVector
+    val result = loop(start, indegree, Vector.empty)
+
+    assert(
+      result.size == nodes.size,
+      "Cycle detected or topoSort dropped nodes"
+    )
+
+    result
   }
 
   def compile[W: Fractional, I <: Int, O <: Int](
@@ -91,6 +103,8 @@ object Evaluator {
         CompiledNode(id, incoming(id))
       }
 
+    //assert(order.map(_.id).toSet == genome.nodes.toSet)
+
     CompiledNetwork(
       inputs  = genome.inputs.toVector,
       bias    = genome.bias.toVector,
@@ -100,31 +114,46 @@ object Evaluator {
     )
   }
 
-  def eval[W: Fractional](
+  def step[W: Fractional](
     net: CompiledNetwork[W],
+    prev: ActivationState[W],
     inputs: Map[Int, W],
     biasValue: W
-  ): Map[Int, W] = {
+  ): ActivationState[W] = {
 
     val F = summon[Fractional[W]]
 
-    net.order.foldLeft(Map.empty[Int, W]) { (values, node) =>
-      val v =
-        if (net.inputs.contains(node.id))
-          inputs(node.id)
-        else if (net.bias.contains(node.id))
-          biasValue
+    val biases = net.bias.map(_ -> biasValue).toMap
+
+    val withInputs = prev.copy(
+      values = prev.values.updateAll(inputs).updateAll(biases)
+    )
+
+    val nextValues =
+      net.order.foldLeft(withInputs.values) { (values, node) =>
+        if (net.inputs.contains(node.id) || net.bias.contains(node.id))
+          values
         else {
           val sum =
-            node.incoming.map { c =>
-              values(c.from) * c.weight
-            }.foldLeft(F.zero)(F.plus)
-
-          net.transfer(sum)
+            node.incoming.map(c => values(c.from) * c.weight).sum
+          values.updated(node.id, net.transfer(sum))
         }
+      }
 
-      values.updated(node.id, v)
-    }
+    ActivationState(nextValues)
   }
 
+  def evalOnce[W: Fractional](
+    net: CompiledNetwork[W],
+    inputs: Map[Int, W],
+    biasValue: W
+  ): Vector[W] = {
+
+    val zero = summon[Fractional[W]].zero
+    val nodeCount = net.order.map(_.id).max + 1
+    val init = ActivationState(Vector.fill(nodeCount)(zero))
+
+    val finalState = step(net, init, inputs, biasValue)
+    net.outputs.map(finalState.values)
+  }
 }
