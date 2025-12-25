@@ -172,21 +172,55 @@ object GenePool:
     }.map { genes =>
       Genome(fitter.nInputs, fitter.nOutputs, genes)
     }
-}
+  }
+
+  def validTargets[W, I <: Int, O <: Int](genome: Genome[W, I, O], from: Int): Vector[Int] =
+    from match {
+      case _ if genome.bias.contains(from) =>
+        (genome.hidden ++ genome.outputs).toVector
+
+      case _ if genome.inputs.contains(from) =>
+        (genome.hidden ++ genome.outputs).toVector
+
+      case _ if genome.hidden.contains(from) =>
+        (genome.hidden ++ genome.outputs).toVector
+
+      case _ =>
+        Vector.empty
+    }
   
+  def createsCycle[W, I <: Int, O <: Int](
+    genome: Genome[W, I, O],
+    from: Int,
+    to: Int
+  ): Boolean = {
+
+    def dfs(current: Int, visited: Set[Int]): Boolean =
+      if (current == from) true
+      else if (visited.contains(current)) false
+      else {
+        val next =
+          genome.genes.collect {
+            case g if g.from == current => g.to
+          }
+        next.exists(n => dfs(n, visited + current))
+      }
+
+    dfs(to, Set.empty)
+  }
+
 
   @unused
   def mutateAddConnection[F[_]: Monad, W, I <: Int, O <: Int](genome: Genome[W, I, O])(using r: Random[F], RR: RandomRange[F, W]): GenePoolStateT[F, Genome[W, I, O]] = 
     val validFrom = genome.nodes.filterNot(genome.outputs.contains)
     for {
       from <- StateT.liftF(r.shuffleList(validFrom.toList).map(_.head))
-      to = from match {
-        case _ if genome.inputs.contains(from) => (genome.outputs ++ genome.hidden).toSeq
-        case _ if genome.hidden.contains(from) => genome.outputs.toSeq
-        case _ if genome.bias.contains(from)   => (genome.inputs ++ genome.hidden ++ genome.outputs).toSeq
-        case _ if genome.outputs.contains(from) => Seq.empty
-      }
-      toOpt <- StateT.liftF { r.shuffleList(to.toList).map(_.headOption) }
+      toCandidates = validTargets(genome, from).filterNot(to =>
+            genome.genes.exists(g => g.from == from && g.to == to)
+          )
+          .filterNot(to => createsCycle(genome, from, to))
+      
+      toOpt <- StateT.liftF { r.shuffleList(toCandidates.toList).map(_.headOption) }
       result <- toOpt match {
         case None => StateT.pure(genome)
         case Some(to) => 

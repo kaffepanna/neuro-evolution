@@ -17,6 +17,8 @@ import cats.Order
 import se.randomserver.ne.genome.GenePool.{*, given}
 import se.randomserver.ne.genome.GenePool
 import se.randomserver.ne.evolution.EvolutionConfig
+import se.randomserver.ne.evaluator.Evaluator.eval
+import se.randomserver.ne.evaluator.Evaluator
 
 object Evolution {
   case class EvaluatedGenome[W, I <: Int, O <: Int, S](
@@ -103,8 +105,11 @@ object Evolution {
       val updatedSpecies = state.species.map { species =>
         val evaluatedMembers = species.members.map {
           case egenome @ EvaluatedGenome(genome, rawFitness, adjustedFitness) => {
+            val compiled = Evaluator.compile(genome, env.transfer)
             val outputs = env.data.map { case (inputs, _) =>
-              Individual.evaluate[W, I, O](genome, env.transfer, inputs, env.defaultBias)
+              val in =  compiled.inputs.zip(inputs).toMap
+              val evaluation = Evaluator.eval(compiled, in, env.defaultBias)
+              compiled.outputs.map(evaluation).toList
             }
             
             val score = env.fitnessFn(outputs, expected)
