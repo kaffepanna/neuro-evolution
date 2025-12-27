@@ -4,7 +4,6 @@ import se.randomserver.ne.genome.Genome
 import cats.data.StateT
 import cats.syntax.all.{*, given}
 import cats.Monad
-import se.randomserver.ne.phenotype.Individual
 import se.randomserver.ne.genome.SpeciationConfig
 import cats.data.ReaderT
 import cats.Applicative
@@ -17,14 +16,16 @@ import cats.Order
 import se.randomserver.ne.genome.GenePool.{*, given}
 import se.randomserver.ne.genome.GenePool
 import se.randomserver.ne.evolution.EvolutionConfig
-import se.randomserver.ne.evaluator.Evaluator.evalOnce
-import se.randomserver.ne.evaluator.Evaluator
+import se.randomserver.ne.evaluator.Compiler
+import se.randomserver.ne.evaluator.Runner
+import se.randomserver.ne.evaluator.Compiler.CompiledNetwork
 
 object Evolution {
   case class EvaluatedGenome[W, I <: Int, O <: Int, S](
     genome: Genome[W, I, O],
     rawFitness: Option[S],
-    adjustedFitness: Option[S]
+    adjustedFitness: Option[S],
+    compiled: Option[CompiledNetwork[W]]
   )
 
   case class Species[W, I <: Int, O <: Int, S](
@@ -58,6 +59,7 @@ object Evolution {
     nodeChance: Double,
     eliteFraction: Double,
     minScore: Option[S],
+    recurrentSteps: Int,
     speciationConfig: SpeciationConfig
   )
 
@@ -104,17 +106,16 @@ object Evolution {
     _ <- EvolutionT.modifyState[F, W, I, O, S] { state =>
       val updatedSpecies = state.species.map { species =>
         val evaluatedMembers = species.members.map {
-          case egenome @ EvaluatedGenome(genome, rawFitness, adjustedFitness) => {
-            val compiled = Evaluator.compile(genome, env.transfer)
+          case egenome @ EvaluatedGenome(genome, rawFitness, adjustedFitness, compiledO) => {
+            val compiled = compiledO.getOrElse(Compiler.compileGenome(genome, env.transfer))
             val outputs = env.data.map { case (inputs, _) =>
               val in =  compiled.inputs.zip(inputs).toMap
-              val evaluation = Evaluator.evalOnce(compiled, in, env.defaultBias)
-              //compiled.outputs.map(evaluation).toList
+              val evaluation = Runner.run(compiled, in, env.defaultBias, env.recurrentSteps)
               evaluation.toList
             }
             
             val score = env.fitnessFn(outputs, expected)
-            egenome.copy(rawFitness = Some(score))
+            egenome.copy(rawFitness = Some(score), compiled = Some(compiled))
           }
         }
         species.copy(members = evaluatedMembers)
@@ -147,7 +148,7 @@ object Evolution {
       val updatedSpecies = state.species.map { species =>
         val evaluated =
           species.members.collect {
-            case eg @ EvaluatedGenome(_, Some(_), _) => eg
+            case eg @ EvaluatedGenome(_, Some(_), _, _) => eg
           }
 
         if (evaluated.isEmpty) {
@@ -295,12 +296,11 @@ object Evolution {
             case idx =>
               val s = speciesAcc(idx)
               val updated =
-                s.copy(members = s.members :+ EvaluatedGenome(genome, None, None))
+                s.copy(members = s.members :+ EvaluatedGenome(genome, None, None, None))
               (speciesAcc.updated(idx, updated), unassignedAcc)
           }
       }
 
-    // --- CLUSTER UNASSIGNED GENOMES AMONG THEMSELVES ---
     clusteredNewSpecies = {
       def cluster(
         remaining: Vector[Genome[W, I, O]],
@@ -310,20 +310,20 @@ object Evolution {
         remaining match {
           case Vector() => acc
 
-          case rep +: rest =>
+          case Vector(rep, rest*) =>
             val (same, others) =
               rest.partition(g =>
                 g.compare(rep, env.speciationConfig) < env.speciationConfig.threshold
               )
 
             val members =
-              (rep +: same).map(g => EvaluatedGenome[W, I, O, S](g, None, None))
+              (rep +: same).map(g => EvaluatedGenome[W, I, O, S](g, None, None, None))
 
             val species =
               Species[W, I, O, S](
                 id = nextId,
                 representative = rep,
-                members = members,
+                members = members.toVector,
                 age = 0
               )
 

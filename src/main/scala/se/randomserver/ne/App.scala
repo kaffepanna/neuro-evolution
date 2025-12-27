@@ -6,8 +6,6 @@ import cats.effect.{ExitCode, IO, IOApp}
 import cats.syntax.all.{*, given}
 import se.randomserver.ne.genome.GenePool.{GenePoolStateT, given}
 import se.randomserver.ne.genome.{GenePool, Genome}
-import se.randomserver.ne.phenotype.Individual
-import se.randomserver.ne.phenotype.Individual.*
 import se.randomserver.ne.graphviz.StringCompiler
 import se.randomserver.ne.GraphvizHelper
 
@@ -94,6 +92,7 @@ object App extends IOApp {
         nodeChance = evCfg.nodeChance,
         eliteFraction = evCfg.eliteFraction,
         minScore = evCfg.targetFitness,
+        recurrentSteps = evCfg.recurrentSteps,
         speciationConfig = sCfg,
       )
 
@@ -106,7 +105,7 @@ object App extends IOApp {
       finalState <- evolve[IO, Double, 2, 1, Double]().runEvolution(evolutionEnv, evolutionState, genePoolState).map(_._2._1)
       winners = finalState.species.map { species =>
         species.members.maxByOption(m => m.rawFitness)
-      }.flatten.filter(m => m.rawFitness.exists(_ > 0.85)).map(_.genome).sortBy(g => g.genes.size)
+      }.flatten.filter(m => m.rawFitness.exists(_ > 0.85)).sortBy(_.genome.genes.size).map(_.genome)
       _ <- (for(winner <- winners) yield GraphvizHelper.plotGenome[IO](winner)).sequence
     } yield (ExitCode.Success)
   }

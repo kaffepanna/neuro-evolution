@@ -15,5 +15,6 @@ final case class EvolutionConfig(
   nodeChance: Double,
 
   defaultBias: Double,
-  targetFitness: Option[Double]
+  targetFitness: Option[Double],
+  recurrentSteps: Int
 ) derives ConfigReader
