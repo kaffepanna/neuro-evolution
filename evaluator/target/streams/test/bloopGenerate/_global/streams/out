@@ -1,4 +1,0 @@
-[debug] [evaluator-test] Classpath dependencies List(genome, graph-tools)
-[debug] [evaluator-test] Dependencies from configurations List(evaluator)
-[debug] Bloop wrote the configuration of project 'evaluator-test' to '/home/patrik/sources/neuro-evolution/.bloop/evaluator-test.json'
-[success] Generated .bloop/evaluator-test.json
