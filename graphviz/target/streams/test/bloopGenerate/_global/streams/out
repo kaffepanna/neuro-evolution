@@ -1,0 +1,4 @@
+[debug] [graphviz-test] Classpath dependencies List(genome, evaluator)
+[debug] [graphviz-test] Dependencies from configurations List(graphviz)
+[debug] Bloop wrote the configuration of project 'graphviz-test' to '/home/patrik/sources/neuro-evolution/.bloop/graphviz-test.json'
+[success] Generated .bloop/graphviz-test.json

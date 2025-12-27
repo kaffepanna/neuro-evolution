@@ -1,0 +1,4 @@
+[debug] [genome-test] Classpath dependencies List()
+[debug] [genome-test] Dependencies from configurations List(genome)
+[debug] Bloop wrote the configuration of project 'genome-test' to '/home/patrik/sources/neuro-evolution/.bloop/genome-test.json'
+[success] Generated .bloop/genome-test.json

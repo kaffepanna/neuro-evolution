@@ -2,20 +2,68 @@ ThisBuild / version := "0.1.0-SNAPSHOT"
 
 ThisBuild / scalaVersion := "3.3.6"
 
-lazy val root = (project in file("."))
+lazy val catsDependencies = Seq(
+  "org.typelevel" %% "cats-core" % "2.8.0",
+  "org.typelevel" %% "cats-free" % "2.8.0",
+  "org.typelevel" %% "cats-effect" % "3.5.4",
+)
+
+lazy val pureConfigDependencies = Seq(
+    "com.github.pureconfig" %% "pureconfig-core" % "0.17.9",
+    "com.github.pureconfig" %% "pureconfig-cats-effect" % "0.17.9",
+)
+
+lazy val fs2Dependencies = Seq(
+    "co.fs2"        %% "fs2-core"    % "3.12.2",
+    "co.fs2"        %% "fs2-io"      % "3.12.2",
+)
+
+lazy val `graph-tools` = (project in file("./graph-tools"))
+  .settings(
+    name := "neuro-evolution-graph-tools",
+    libraryDependencies ++= Seq(
+      "org.scalameta" %% "munit" % "1.0.4" % Test
+    )
+  )  
+
+lazy val genome = (project in file("./genome"))
+  .settings(
+    name := "neuro-evolution-genome",
+    Compile / scalacOptions ++= Seq(
+      "-Ykind-projector:underscores"
+    ),
+    libraryDependencies ++= catsDependencies ++ pureConfigDependencies
+  )
+
+lazy val evaluator = (project in file("./evaluator"))
+  .settings(
+    name := "neuro-evolution-evaluator",
+    Compile / scalacOptions ++= Seq(
+      "-Ykind-projector:underscores"
+    ),
+    libraryDependencies ++= catsDependencies
+  ).dependsOn(genome, `graph-tools`)
+
+lazy val evolution = (project in file("./evolution"))
   .settings(
     name := "neuro-evolution",
     Compile / scalacOptions ++= Seq(
       "-Ykind-projector:underscores"
     ),
-    libraryDependencies ++= Seq(
-      "org.typelevel" %% "cats-core" % "2.8.0",
-      "org.typelevel" %% "cats-free" % "2.8.0",
-      "org.typelevel" %% "cats-effect" % "3.5.4",
-      "co.fs2"        %% "fs2-core"    % "3.12.2",
-      "co.fs2"        %% "fs2-io"      % "3.12.2",
-      "com.github.pureconfig" %% "pureconfig-core" % "0.17.9",
-      "com.github.pureconfig" %% "pureconfig-cats-effect" % "0.17.9",
-      "org.scalameta" %% "munit" % "1.0.4" % Test
-    )
-  )
+    libraryDependencies ++= catsDependencies
+  ).dependsOn(genome, evaluator)
+
+lazy val graphviz = (project in file("./graphviz"))
+  .settings(
+    name := "neuro-evolution-graphviz",
+    libraryDependencies ++= catsDependencies ++ fs2Dependencies
+  ).dependsOn(genome, evaluator)
+
+lazy val example = (project in file("./example"))
+  .settings(
+    name := "neuro-evolution-example",
+    Compile / scalacOptions ++= Seq(
+      "-Ykind-projector:underscores"
+    ),
+    libraryDependencies ++= catsDependencies ++ pureConfigDependencies
+  ).dependsOn(genome, evaluator, evolution, graphviz)

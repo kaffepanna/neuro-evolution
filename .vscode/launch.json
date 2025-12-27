@@ -6,10 +6,10 @@
       "request": "launch",
       "name": "App",
       "mainClass": "se.randomserver.ne.App",
-      "buildTarget": "file:/home/patrik/sources/neuro-evolution/?id=root",
+      "buildTarget": "file:/home/patrik/sources/neuro-evolution/example/?id=example",
       "args": [],
       "jvmOptions": [],
-      "env": { "DISPLAY": ":0" }
+      "env": {}
     }
   ]
 }
