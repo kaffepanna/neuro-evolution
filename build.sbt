@@ -15,6 +15,7 @@ lazy val root = (project in file("."))
       "co.fs2"        %% "fs2-core"    % "3.12.2",
       "co.fs2"        %% "fs2-io"      % "3.12.2",
       "com.github.pureconfig" %% "pureconfig-core" % "0.17.9",
-      "com.github.pureconfig" %% "pureconfig-cats-effect" % "0.17.9"
+      "com.github.pureconfig" %% "pureconfig-cats-effect" % "0.17.9",
+      "org.scalameta" %% "munit" % "1.0.4" % Test
     )
   )
