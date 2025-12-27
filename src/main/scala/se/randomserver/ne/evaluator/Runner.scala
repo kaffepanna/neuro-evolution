@@ -33,7 +33,7 @@ object Runner {
     }
   }
 
-  def run[W: Numeric](
+  def evalNetwork[W: Numeric](
     network: CompiledNetwork[W],
     inputs: Map[Int, W],
     biasValue: W,
@@ -41,8 +41,6 @@ object Runner {
   ): Vector[W] = {
     val maxNodeId = network.blocks.flatMap(_.nodes.map(_.id)).max
     val init = ActivationState.zero(maxNodeId + 1)
-      .updateAll(inputs)
-      .updateAll(network.bias.map(_ -> biasValue).toMap)
     
     val finalState = network.blocks.foldLeft(init) { (state, block) =>
       if (block.isRecurrent)

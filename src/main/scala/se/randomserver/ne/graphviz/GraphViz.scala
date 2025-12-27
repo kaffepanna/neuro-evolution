@@ -10,6 +10,7 @@ object GraphViz {
 
   case class Node(name: String, attributes: Map[String, String] = Map.empty)
   case class Edge(from: String, to: String, attributes: Map[String, String] = Map.empty)
+  case class Attribute(key: String, value: String)
 
   enum GrammarA[A]:
     case GGraph(g: Grammar[Unit]) extends GrammarA[Unit]
@@ -17,6 +18,7 @@ object GraphViz {
     case GSubGraph(name: String, g: Grammar[A]) extends GrammarA[A]
     case GNode(name: String, attributes: Seq[(String, String)])             extends GrammarA[Node]
     case GEdge(from: String, to: String, attributes: Seq[(String, String)]) extends GrammarA[Edge]
+    case GAttribute(key: String, value: String) extends GrammarA[Attribute]
 
 
   import cats.free.Free
@@ -35,6 +37,11 @@ object GraphViz {
 
   def node(name: String, attributes: (String, String)*): Grammar[Node] =
     liftF[GrammarA, Node](GrammarA.GNode(name, attributes))
+
+  def attribute(key: String, value: String) =
+    liftF[GrammarA, Attribute](GrammarA.GAttribute(key, value))
+
+  def label(l: String) = attribute("label", s"\"$l\"")
 
   def edge_(n1: String, n2: String, attributes: (String, String)*): Grammar[Edge] =
     liftF[GrammarA, Edge](GrammarA.GEdge(n1, n2, attributes))

@@ -4,6 +4,7 @@ import GraphViz._
 
 import cats.data.Writer
 import cats.{Id, ~>}
+import cats.syntax.all.{*,given}
 
 object StringCompiler:
   type GraphVizState[A] = Writer[String, A]
@@ -46,6 +47,10 @@ object StringCompiler:
         _ <- Writer.tell("\t" * level ++ s"$from -> $to")
         _ <- writeAttributes(attributes)
       } yield Edge(from, to, Map.from(attributes))
+
+      case GrammarA.GAttribute(key, value) => for {
+        _ <- Writer.tell("\t" * level ++ s"$key=$value\n")
+      } yield Attribute(key, value)
   }
 end StringCompiler
 

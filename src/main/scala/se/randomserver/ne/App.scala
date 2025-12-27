@@ -105,8 +105,8 @@ object App extends IOApp {
       finalState <- evolve[IO, Double, 2, 1, Double]().runEvolution(evolutionEnv, evolutionState, genePoolState).map(_._2._1)
       winners = finalState.species.map { species =>
         species.members.maxByOption(m => m.rawFitness)
-      }.flatten.filter(m => m.rawFitness.exists(_ > 0.85)).sortBy(_.genome.genes.size).map(_.genome)
-      _ <- (for(winner <- winners) yield GraphvizHelper.plotGenome[IO](winner)).sequence
+      }.flatten.filter(m => m.rawFitness.exists(_ > 0.85)).sortBy(_.genome.genes.size).map(a => a.compiled)
+      _ <- (for(winner <- winners) yield GraphvizHelper.plotCompiled[IO](winner.get)).sequence
     } yield (ExitCode.Success)
   }
 }

@@ -110,7 +110,7 @@ object Evolution {
             val compiled = compiledO.getOrElse(Compiler.compileGenome(genome, env.transfer))
             val outputs = env.data.map { case (inputs, _) =>
               val in =  compiled.inputs.zip(inputs).toMap
-              val evaluation = Runner.run(compiled, in, env.defaultBias, env.recurrentSteps)
+              val evaluation = Runner.evalNetwork(compiled, in, env.defaultBias, env.recurrentSteps)
               evaluation.toList
             }
             

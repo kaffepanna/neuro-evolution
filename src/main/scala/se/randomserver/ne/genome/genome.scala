@@ -218,7 +218,7 @@ object GenePool:
       toCandidates = validTargets(genome, from).filterNot(to =>
             genome.genes.exists(g => g.from == from && g.to == to)
           )
-          .filterNot(to => createsCycle(genome, from, to))
+          //.filterNot(to => createsCycle(genome, from, to))
       
       toOpt <- StateT.liftF { r.shuffleList(toCandidates.toList).map(_.headOption) }
       result <- toOpt match {
