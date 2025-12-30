@@ -75,8 +75,8 @@ object Evolution {
     def runEvolution(env: EvolutionEnv[W, S], state: EvolutionState[W, I, O, S], gp: GenePool)(using F: Monad[F]) =
       et.run(env).run(state).run(gp)
 
-  given [F[_], W, I <: Int, O <: Int, S](using ap: Applicative[StateT[F, EvolutionState[W, I, O, S], _]]): Applicative[EvolutionStateT[F, W, I, O, S, _]] = ap
   given [F[_], W, I <: Int, O <: Int, S](using ap: Monad[StateT[F, EvolutionState[W, I, O, S], _]]): Monad[EvolutionStateT[F, W, I, O, S, _]] = ap
+  given [F[_], W, I <: Int, O <: Int, S](using ap: Monad[ReaderT[EvolutionStateT[GenePoolStateT[F, *], W, I, O, S, *], EvolutionEnv[W, S], _]]): Monad[EvolutionT[F, W, I, O, S, _]] = ap
 
   object EvolutionT {
     def pure[F[_]: Monad, W, I <: Int, O  <: Int, S, A](a: A): EvolutionT[F, W, I, O, S, A] =
@@ -179,12 +179,11 @@ object Evolution {
     W,
     I <: Int,
     O <: Int,
-    S: Fractional
+    S: Fractional: Numeric
   ]: EvolutionT[F, W, I, O, S, Map[Long, Int]] =
     for {
       env   <- EvolutionT.getEnv[F, W, I, O, S]
       state <- EvolutionT.getState[F, W, I, O, S]
-
       // 1. Compute total adjusted fitness
       speciesFitnesses = state.species.map { sp =>
         val fitnessSum =
@@ -192,8 +191,13 @@ object Evolution {
         sp.id -> fitnessSum
       }
 
+      minFitness = speciesFitnesses.map(_._2).min
+
+      shifted = if (Fractional[S].lt(minFitness, Fractional[S].zero)) speciesFitnesses.map { case (id, f) => id -> (f - minFitness)}
+                else speciesFitnesses
+
       totalFitness =
-        speciesFitnesses.map(_._2).foldLeft(Fractional[S].zero)(_ + _)
+        shifted.map(_._2).foldLeft(Fractional[S].zero)(_ + _)
 
       // 2. Raw allocation
       rawAllocations =
@@ -201,7 +205,7 @@ object Evolution {
           // fallback: uniform distribution
           state.species.map(sp => sp.id -> 1)
         else
-          speciesFitnesses.map { case (id, fit) =>
+          shifted.map { case (id, fit) =>
             val share =
               Fractional[S].toDouble(fit / totalFitness)
             val count =

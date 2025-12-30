@@ -2,6 +2,7 @@ package se.randomserver.ne.genome
 import pureconfig.*
 import pureconfig.generic.derivation.default.*
 import cats.effect.std.Random
+import cats.Order
 
 trait RandomRange[F[_], W] {
   def get: F[W]
@@ -18,25 +19,32 @@ case class RandomRangeConfig(
 ) derives ConfigReader
 
 object RandomRange:
-  given [F[_]](using R: Random[F]): RandomRange[F, Double] = new RandomRange[F, Double]:
-    override def get: F[Double] = R.betweenDouble(-1.0d, 1.0d)
-    override def perturb: F[Double] = R.betweenDouble(-0.2d, 0.2d)
-    override def clamp(w: Double): Double = w.max(-8.0).min(8.0)
-    override def one: Double = 1.0d
-    override def zero: Double = 0.0d
 
-  given [F[_]](using R: Random[F]): RandomRange[F, Float] = new RandomRange[F, Float]:
-    override def get: F[Float] = R.betweenFloat(-1.0f, 1.0f)
-    override def perturb: F[Float] =  R.betweenFloat(-0.5f, 0.5f)
-    override def clamp(w: Float): Float = w.max(-5.0f).min(5.0f)
-    override def one: Float = 1.0f
-    override def zero: Float = 0.0f
-
-  def apply[F[_]: Random](cfg: RandomRangeConfig): RandomRange[F, Double] = new RandomRange {
-    val rr = summon[Random[F]]
-    override def get: F[Double] = rr.betweenDouble(cfg.initRange._1, cfg.initRange._2)
-    override def perturb: F[Double] = rr.betweenDouble(cfg.perturbRange._1, cfg.perturbRange._2)
-    override def clamp(w: Double): Double = w.max(cfg.clampRange._1).min(cfg.clampRange._2)
-    override def one: Double = 1.0d
-    override def zero: Double = 0.0d
+  trait RR[F[_]: Random, W] {
+    def random(range: (W, W)): F[W]
   }
+
+  object RR {
+    def apply[F[_], W](using r: RR[F, W]): RR[F, W] = r
+  }
+
+  given [F[_]](using R: Random[F]): RR[F, Double] = new RR {
+    def random(range: (Double, Double)): F[Double] = 
+      R.betweenDouble(range._1, range._2)
+  }
+
+  def apply[F[_]: Random](cfg: RandomRangeConfig): RandomRange[F, Double] =
+    apply(cfg.initRange, cfg.perturbRange, cfg.clampRange) 
+
+  def apply[F[_]: Random, A: RR[F, _]: Numeric: Order](
+      initRange: (A, A),
+      perturbRange: (A, A),
+      clampRange: (A, A) 
+    ): RandomRange[F, A] = new RandomRange {
+      import cats.syntax.order.catsSyntaxOrder
+      override def get: F[A] = RR[F, A].random(initRange)
+      override def perturb: F[A] = RR[F, A].random(perturbRange)
+      override def clamp(w: A): A = w.max(clampRange._1).min(clampRange._2)
+      override def one: A = Numeric[A].one
+      override def zero: A = Numeric[A].zero
+    }

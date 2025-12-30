@@ -2,6 +2,13 @@ ThisBuild / version := "0.1.0-SNAPSHOT"
 
 ThisBuild / scalaVersion := "3.3.6"
 
+lazy val osName = System.getProperty("os.name").toLowerCase match {
+  case n if n.contains("win")   => "win"
+  case n if n.contains("mac")   => "mac"
+  case n if n.contains("linux") => "linux"
+  case _ => throw new Exception("Unknown platform")
+}
+
 lazy val catsDependencies = Seq(
   "org.typelevel" %% "cats-core" % "2.8.0",
   "org.typelevel" %% "cats-free" % "2.8.0",
@@ -67,3 +74,17 @@ lazy val example = (project in file("./example"))
     ),
     libraryDependencies ++= catsDependencies ++ pureConfigDependencies
   ).dependsOn(genome, evaluator, evolution, graphviz)
+
+lazy val `the-game` = (project in file("./the-game"))
+  .settings(
+    name := "neuro-evolution-the-game",
+    Compile / scalacOptions ++= Seq(
+      "-Ykind-projector:underscores"
+    ),
+    libraryDependencies ++= catsDependencies ++ pureConfigDependencies ++ Seq(
+      "org.scalafx" %% "scalafx" % "21.0.0-R32",
+      "org.openjfx" % "javafx-base"     % "21.0.1" classifier osName,
+      "org.openjfx" % "javafx-graphics" % "21.0.1" classifier osName,
+      "org.openjfx" % "javafx-controls" % "21.0.1" classifier osName
+    )
+  ).dependsOn(genome, evaluator, evolution)

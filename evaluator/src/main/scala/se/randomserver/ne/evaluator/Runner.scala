@@ -8,7 +8,7 @@ object Runner {
   opaque type ActivationState[W] = Vector[W]
 
   object ActivationState {
-    def zero[W: Numeric](n: Int) = Vector.fill(n)(summon[Numeric[W]].zero)
+    def zero[W: Numeric](n: Int): ActivationState[W] = Vector.fill(n)(summon[Numeric[W]].zero)
     def apply[W](s: W*): ActivationState[W] = Vector(s:_*)
   }
 
@@ -32,6 +32,20 @@ object Runner {
           values.updated(node.id, network.transfer(x))
     }
   }
+
+  def stepNetwork[W: Numeric](
+    network: CompiledNetwork[W],
+    inputs: Map[Int, W],
+    biasValue: W,
+    activationState: ActivationState[W]): ActivationState[W] = {
+      val stateWithInputs = activationState
+        .updateAll(inputs)
+        .updateAll(network.bias.map(_ -> biasValue).toMap)
+
+      network.blocks.foldLeft(stateWithInputs) { (state, block) =>
+        stepBlock(block, state, network)   
+      }
+    }
 
   def evalNetwork[W: Numeric](
     network: CompiledNetwork[W],
