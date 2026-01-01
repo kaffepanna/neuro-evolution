@@ -3,8 +3,8 @@ package se.randomserver.ne.the_game
 import scala.util.Random
 
 object Game {
-  type Id = Long
-  type TeamId = Long
+  type Id = Int
+  type TeamId = Int
   type Pos = (Int, Int)
 
   enum Cell {
@@ -39,15 +39,31 @@ object Game {
   )
 
   object GameState {
-    def random(rows: Int, cols: Int, inds: Set[IndividualState]): GameState =
+    
+    def random(rows: Int, cols: Int, inds: Set[(Id, TeamId)]): GameState =
       val r = new Random()
-      val foods = Vector.fill(Math.sqrt(rows.toDouble*cols.toDouble).toInt)((r.between(0, rows), r.between(0, cols)))
-      val grid = foods.foldLeft(Vector.fill(rows, cols)(Cell.Empty)) { (g, pos) =>
+      val walls = List.fill(Math.sqrt(rows.toDouble*cols.toDouble).toInt)(1).zipWithIndex.map(_.swap).toSet
+      val foods = List.fill(Math.sqrt(rows.toDouble*cols.toDouble).toInt)(2).zipWithIndex.map(_.swap).toSet
+      val wallsPlaced = RandomPlacer.placeIds(walls, rows,cols).get.values.toSet
+      val foodPlaced = RandomPlacer.placeIdsWithObstacles(foods, rows,cols, walls).get.values.toSet
+      val placements: Map[Id, Pos] = RandomPlacer.placeIdsWithObstacles(inds, rows, cols, walls ++ foods) match
+        case Some(value) => value
+        case None => throw IllegalStateException("cannot place individuals")
+      
+      val grid = wallsPlaced.foldLeft(Vector.fill(rows, cols)(Cell.Empty)) { (g, pos) =>
+        g.updated(pos._1, g(pos._1).updated(pos._2, Cell.Obstacle))
+      }
+
+      val grid2 = foodPlaced.foldLeft(grid) { (g, pos) =>
         g.updated(pos._1, g(pos._1).updated(pos._2, Cell.Food))
       }
+
       GameState(
-        grid,
-        inds.map(i => i.id -> i).toMap
+        grid2,
+        placements.map { case (id, pos) => 
+          val team = inds.find(_._1 == id).get._2
+          id -> IndividualState(id, team, pos)
+        }
       )
   }
 
@@ -177,22 +193,12 @@ object Game {
           ids.map(id => id -> Resolution.Stay(pos))
 
         // ⚔️ multiple teams arrive at same cell → all die
+        case Some(Cell.Individual(presentId, presentTeamId)) =>
+          resolveSameTeamCollision(state, pos, ids.toSet + presentId)
         case _ if teams.size > 1 =>
           ids.map(id => id -> Resolution.Die)
-
-        // 🍎 food (single team guaranteed here)
-        case Some(Cell.Food) =>
-          if (ids.size == 1)
-            Map(ids.head -> Resolution.Move(pos))
-          else
-            resolveSameTeamCollision(state, pos, ids)
-
-        // ⬜ empty
-        case Some(Cell.Empty | Cell.Individual(_, _)) =>
-          if (ids.size == 1)
-            Map(ids.head -> Resolution.Move(pos))
-          else
-            resolveSameTeamCollision(state, pos, ids)
+        case _ =>
+          resolveSameTeamCollision(state, pos, ids)
       }
     }
   }
@@ -261,14 +267,14 @@ object Game {
     newState.individuals.foreach { case (id, ind) =>
       moveResolutions.get(id) match {
         case Some(Resolution.Move(pos)) if !oldState.individuals(id).visited.contains(pos) =>
-          deltaScores += id -> (deltaScores(id) + 0.2)
+          deltaScores += id -> (deltaScores(id) + 0.1)
         case _ => ()
       }
     }
 
     // 2️⃣ Food reward
     foodConsumed.foreach { case (id, _) =>
-      deltaScores += id -> (deltaScores(id) + 1.0)
+      deltaScores += id -> (deltaScores(id) + 5.0)
     }
 
     // 3️⃣ Adjacency combat: assign rewards to winners
@@ -289,7 +295,7 @@ object Game {
             ()
           case (id, ind) if ind.alive && ind.team != dead.team && neighbors.contains(ind.pos) =>
             // Enemy adjacent to dead agent gets a reward
-            deltaScores += id -> (deltaScores(id) + 5.0)
+            deltaScores += id -> (deltaScores(id) + 10.0)
         }
       }
     }

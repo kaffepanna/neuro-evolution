@@ -98,17 +98,15 @@ object App extends IOApp {
         speciationConfig = sCfg,
       )
 
-      evolutionState = EvolutionState[Double, 2, 1, Double](
-        Vector.empty, 0
-      )
+      evolutionState = EvolutionState[Double, 2, 1, Double]()
 
       genePoolState = GenePool(0, Map.empty)
 
       finalState <- evolve[IO, Double, 2, 1, Double]().runEvolution(evolutionEnv, evolutionState, genePoolState).map(_._2._1)
       winners = finalState.species.map { species =>
-        species.members.maxByOption(m => m.rawFitness)
-      }.flatten.filter(m => m.rawFitness.exists(_ > 0.85)).sortBy(_.genome.genes.size).map(a => a.compiled)
-      _ <- (for(winner <- winners) yield GraphvizHelper.plotCompiled[IO](winner.get)).sequence
+        species.members.maxByOption(finalState.fitness)
+      }.flatten.filter(m => finalState.fitness.get(m).exists(_ > 0.85)).sortBy(finalState.population(_).genes.size).map(a => se.randomserver.ne.evaluator.Compiler.compileGenome(finalState.population(a), identity))
+      _ <- (for(winner <- winners) yield GraphvizHelper.plotCompiled[IO](winner)).sequence
     } yield (ExitCode.Success)
   }
 }

@@ -16,113 +16,111 @@ import cats.effect.IO
 import se.randomserver.ne.genome.SpeciationConfig
 import se.randomserver.ne.genome.RandomRange
 import se.randomserver.ne.evaluator.Runner.ActivationState
+import se.randomserver.ne.evaluator.Compiler.CompiledNetwork
+import se.randomserver.ne.genome.Genome
 
 object GameEvolution {
   type Inputs = 49
   type Outputs = 4
-  val ROWS = 60
-  val COLS = 60
+  val ROWS = 30
+  val COLS = 30
 
   type Evo[F[_], A] = EvolutionT[F, Double, Inputs, Outputs, Double, A]
 
-  def integrate(
+  def integrate[F[_]: Monad: Parallel](
     n: Int,
-    agents: Vector[((Long, EvaluatedGenome[Double, Inputs, Outputs, Double]), Long)],
-    acc: Seq[GameState],
-    activationStates: Map[Long, ActivationState[Double]]
-  ): Seq[GameState] = n match {
-    case 0 => acc
+    agents: Map[GenomeId, (SpeciesId, CompiledNetwork[Double])],
+    acc: Array[GameState],
+    activationStates: Map[GenomeId, ActivationState[Double]]
+  ): F[Array[GameState]] = n match {
+    case 0 => Monad[F].pure(acc)
     case nn => {
       val state = acc.last
-      val intents = agents.map { case ((team, member), id) =>
+      val intentsF = agents.map { case (id, (team, member)) =>
         val inputs = Game.vision(state, id, 3).flatten.map {
           case Cell.Empty => 0.0
           case Cell.Individual(_, `team`) => 1.0
           case Cell.Individual(_, _) => -1.0
           case Cell.Obstacle => -0.5
           case Cell.Food => 0.5
-        }.zipWithIndex.map(_.swap).toMap
+        }.zip(member.inputs.toVector.sorted).map(_.swap).toMap
         val activationState = activationStates(id)
-        val nextActivationState = Runner.stepNetwork(member.compiled.get, inputs, 1.0, activationState)
-        val intent = member.compiled.get.outputs.toVector.sorted.map(nextActivationState.apply).zip(Game.Action.values).maxBy(_._1)
-        id.toLong -> (intent._2, nextActivationState)
-      }.toMap
-      integrate(nn - 1, agents, acc :+ Game.step(state, intents.map((k, v) => k -> v._1)), intents.map((k, v) => k -> v._2))
+        val nextActivationState = Runner.stepNetwork(member, inputs, 1.0, activationState)
+        val intent = member.outputs.toVector.sorted.map(nextActivationState.apply).zip(Game.Action.values).maxBy(_._1)
+        Monad[F].pure(id -> (intent._2, nextActivationState))
+      }.toList.parSequence.map(_.toMap)
+      intentsF >>= { intents => integrate(nn - 1, agents, acc :+ Game.step(state, intents.map((k, v) => k -> v._1)), intents.map((k, v) => k -> v._2)) }
     }
   }
 
-  def gameStep[F[_]: Monad](count: Int = 1)(using RR: RandomRange[F, Double], R: Random[F]): Evo[F, Seq[GameState]] = for {
-    env <- getEnv
-    state <- getState[F, Double, Inputs, Outputs, Double]
-
-    members = state.species.flatMap { species =>
-      species.members.map {m => 
-          val compiledMember = m.compiled match {
-            case Some(_) => m 
-            case _ =>
-              val compiled = Compiler.compileGenome(m.genome, env.transfer)
-              m.copy(compiled = Some(compiled))
-          }
-          (species.id, compiledMember)
-      }
-    }.zipWithLongIndex 
-    initialIndividuals <- members.traverse { case ((teamId, member), id) =>
-      for {
-        r <- liftF(R.betweenInt(0, ROWS))
-        c <- liftF(R.betweenInt(0, COLS))
-        pos = (r, c)
-        agent = Game.IndividualState(id, teamId, pos)
-      } yield agent
-    } 
+  def gameStep[F[_]: Monad: Applicative: Parallel](count: Int = 1, env: EvolutionEnv[Double, Double], members:  Map[Int, (Int, CompiledNetwork[Double])])(using RR: RandomRange[F, Double], R: Random[F]): F[(Seq[GameState], Map[GenomeId, Double])] = for {
+    initialIndividuals <- Monad[F].pure(members.toVector.map { case id -> (teamId, member) => id -> teamId })
 
     initialGameState = GameState.random(ROWS, COLS, initialIndividuals.toSet)
-    initailActivationStates = Map.empty[Long, ActivationState[Double]].withDefault { i =>
-      val ((_, member), _) = members(i.toInt)
-      val maxNode = member.compiled.get.blocks.flatMap(_.nodes.map(_.id)).max
+    initailActivationStates = Map.empty[GenomeId, ActivationState[Double]].withDefault { i =>
+      val (_, compiled) = members(i)
+      val maxNode = compiled.blocks.flatMap(_.nodes.map(_.id)).max
       ActivationState.zero[Double](maxNode + 1)
     }
-    states = integrate(env.generations, members, Seq(initialGameState), initailActivationStates)
-    updatedSpecies = members.groupBy(_._1._1).map { 
-      case (speciesId, m) =>
-        val species = state.species.find(_.id == speciesId).get
-        val updatedMembers = m.map {
-          case ((_, member), id) =>
-            val oldScore = member.rawFitness.getOrElse(0d)
-            val newScore = oldScore + (states.last.individuals(id).score - oldScore) / count.toDouble
-            member.copy(rawFitness = Some(newScore))
-        }
-        species.copy(members = updatedMembers)
-    }
+    states <- integrate(env.generations, members, Array(initialGameState), initailActivationStates)
+    
+    updatedFitness = members.map { case (id, (_, _)) =>
+      id -> states.last.individuals(id).score
+    }.toMap
+  } yield (states, updatedFitness)
 
-    _ <- modifyState[F, Double, Inputs, Outputs, Double] { s =>
-      state.copy(species = updatedSpecies.toVector)
-    }
-  } yield states
-
-  def step[F[_]: Monad](using R: Random[F], RR: RandomRange[F, Double]): Evo[F, Seq[GameState]] = for {
+  def step[F[_]: Monad: Parallel](using R: Random[F], RR: RandomRange[F, Double]): Evo[F, Seq[GameState]] = for {
     env <- getEnv
-    states <- Range.inclusive(1, env.recurrentSteps)
-                   .toList
-                   .traverse(n => gameStep(n))
+    state <- getState[F, Double, Inputs, Outputs, Double]
+    
+    members = state.population.map { (id, genome) =>
+          val compiled = Compiler.compileGenome(genome, env.transfer)
+          id -> compiled
+    }.toVector
+    
+    shuffled <- liftF(R.shuffleVector(members))
+    teams = Utils.splitEvenly(shuffled, 4).zipWithIndex.flatMap {
+      case (a, team) => a.map {
+        case (id, m) => (id, (team, m))
+      }
+    }.toMap
+    
+    runs <- liftF { 
+      (1 to env.recurrentSteps).inclusive
+        .toList
+        .map(n => gameStep(n, env, teams)).parSequence
+    }
+
+    _ <- modifyState[F, Double, Inputs, Outputs, Double] { state => 
+      val updatedFitness = runs.map(_._2).foldLeft(Map.empty[Int, (Double, Int)]) { (acc, map) =>
+        map.foldLeft(acc) { case (innerAcc, (k, v)) =>
+          val (sum, count) = innerAcc.getOrElse(k, (0.0, 0))
+          innerAcc.updated(k, (sum + v, count + 1))
+        }  
+      }.map { case (k, (v, n)) => k -> v / n }
+      state.copy(fitness = updatedFitness)
+    }
     _ <- adjustFitnessSharing[F, Double, Inputs, Outputs, Double]
     _ <- debug[F, Double, Inputs, Outputs, Double]
     _ <- cullSpecies[F, Double, Inputs, Outputs, Double]
     offspringPlan <- allocateOffspringPerSpecies[F, Double, Inputs, Outputs, Double]
-    _ = { println(s"Offspring plan size ${offspringPlan}")}
     newPop <- reproduce[F, Double, Inputs, Outputs, Double](offspringPlan)
     _ <- speciate[F, Double, Inputs, Outputs, Double](newPop)
     _ <- reassignRepresentatives[F, Double, Inputs, Outputs, Double]
     _ <- EvolutionT.modifyState[F, Double, Inputs, Outputs, Double] { state =>
-      val ageIncremented = state.species.map(s => s.copy(age = s.age + 1))
-      state.copy(generation = state.generation + 1, species = ageIncremented)
+      val ageIncremented = state.species.map[Species[Double, Inputs, Outputs]](s => s.copy(age = s.age + 1))
+      state.copy(generation = state.generation + 1, species = ageIncremented, fitness = Map.empty, adjustedFitness = Map.empty)
     }
-  } yield states.last
+  } yield runs.last._1
 
-  def evolve[F[_]: Monad: Random](using RandomRange[F, Double]): Evo[F, Seq[GameState]] = for {
+  def evolve[F[_]: Monad: Random: Parallel](using RandomRange[F, Double]): Evo[F, Seq[GameState]] = for {
     env <- getEnv
-    initialPop <- liftGenePool(genome[F, Double, Inputs, Outputs]).replicateA(env.popsize)
-    _ <- speciate(initialPop.toVector)
-    states <- List.fill(env.generations)(()).traverse { _ => step }
+    genomes <- liftGenePool[F, Double, Inputs, Outputs, Double, Genome[Double, Inputs, Outputs]](genome()).replicateA(env.popsize)
+    initialPop <- genomes.map { genome =>
+        nextGenomeId >>= (id => EvolutionT.pure[F, Double, Inputs, Outputs, Double, (GenomeId, Genome[Double, Inputs, Outputs])](id -> genome))
+    }.sequence
+    _ <- speciate(initialPop.toMap)
+    states <- List.fill(env.generations)(()).traverse { _ => step[F] }
   } yield states.last
 
   def run: IO[Seq[GameState]] = {
@@ -140,23 +138,21 @@ object GameEvolution {
         data = List.empty,
         transfer = transferFn,
         fitnessFn = (_, _) => 0,
-        popsize = 35,
-        generations = 200,
+        popsize = 20,
+        generations = 500,
         defaultBias = 1.0,
-        weightChance = 0.35,
+        weightChance = 0.50,
         resetChance = 0,
-        connectionChance = 0.25,
-        nodeChance = 0.12,
+        connectionChance = 0.15,
+        nodeChance = 0.10,
         eliteFraction = 0.10,
         minScore = None,
-        recurrentSteps = 4,
+        recurrentSteps = 5,
         speciationConfig = SpeciationConfig(
-          4.0, 3.0, 0.4, 0.25
+          15.0, 10.0, 0.2, 0.3
         )
       )
-      evolutionState = EvolutionState[Double, Inputs, Outputs, Double](
-        Vector.empty, 0
-      )
+      evolutionState = EvolutionState[Double, Inputs, Outputs, Double]()
 
       genePoolState = GenePool(0, Map.empty)
       result <- evolve[IO].runEvolution(env, evolutionState, genePoolState)

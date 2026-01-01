@@ -97,7 +97,7 @@ object GridVisualizer extends JFXApp3 {
   def updateScoreboard(scoreboard: VBox): Unit = {
     scoreboard.children.clear()
     gameStateProperty.value.individuals.values.toSeq.sortBy(-_.score).foreach { ind =>
-      scoreboard.children.add(new Label(s"ID: ${ind.id}, Team: ${ind.team}, Score: ${ind.score}"))
+      scoreboard.children.add(new Label(s"ID: ${ind.id}, Team: ${ind.team}, Score: ${String.format("%.2f", ind.score)}"))
     }
   }
 }
