@@ -20,6 +20,16 @@
       "args": [],
       "jvmOptions": [],
       "env": {}
+    },
+    {
+      "type": "scala",
+      "request": "launch",
+      "name": "GridEditorApp",
+      "mainClass": "se.randomserver.ne.ui.GridEditorApp",
+      "buildTarget": "file:/home/patrik/sources/neuro-evolution/the-game/?id=the-game",
+      "args": [],
+      "jvmOptions": [],
+      "env": {}
     }
   ]
 }

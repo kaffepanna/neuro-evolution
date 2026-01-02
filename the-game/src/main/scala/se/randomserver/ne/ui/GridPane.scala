@@ -6,6 +6,7 @@ import scalafx.beans.property.ObjectProperty
 import scalafx.scene.paint.Color
 import se.randomserver.ne.the_game.Game
 import se.randomserver.ne.view_models.GridViewModel
+import se.randomserver.ne.ui.ScalaFxOps.color
 
 class GridPane(gridViewModel: GridViewModel) extends Pane {
   val canvas = new Canvas()
@@ -68,16 +69,11 @@ class GridPane(gridViewModel: GridViewModel) extends Pane {
     // Draw agents
     gameState.individuals.values.foreach { ind =>
       if (ind.alive) {
-        val (r, c) = ind.pos
+        val Game.Pose((r, c), heading) = ind.pose
         val x = offsetX + c*cellSize
         val y = offsetY + r*cellSize
-        // gc.fill = ind.team match {
-        //   case 0 => Color.Blue
-        //   case 1 => Color.Red
-        //   case _ => Color.Purple
-        // }
-        val hue = (ind.team * 137.508) % 360 // golden angle
-        gc.fill = Color.hsb(hue, 0.8, 0.85)
+
+        gc.fill = ind.team.color
         gc.fillRect(x+2, y+2, cellSize-4, cellSize-4) // margin inside cell
       }
     }

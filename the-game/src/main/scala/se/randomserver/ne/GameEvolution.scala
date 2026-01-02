@@ -24,7 +24,7 @@ import se.randomserver.ne.the_game.Utils
 
 object GameEvolution {
   import scala.compiletime.ops.int.*
-  type VisionRadius = 4
+  type VisionRadius = 2
   type VisionSqrt = VisionRadius * 2 + 1
   type Inputs = VisionSqrt * VisionSqrt
   type Outputs = 4
@@ -44,10 +44,10 @@ object GameEvolution {
       val state = acc.last
       val intentsF = agents.map { case (id, (team, member)) =>
         val inputs = Game.vision(state, id, valueOf[VisionRadius]).flatten.map {
-          case Cell.Empty => 0.5
-          //case Cell.Individual(_, `team`) => 0.5
-          case Cell.Individual(_, _) => -0.5
-          case Cell.Obstacle => -1.0
+          case Cell.Empty => 0.0
+          case Cell.Individual(_, `team`) => 0.5
+          case Cell.Individual(_, _) => -1.0
+          case Cell.Obstacle => -0.5
           case Cell.Food => 1.0
         }.zip(member.inputs.toVector.sorted).map(_.swap).toMap
         val activationState = activationStates(id)
@@ -72,7 +72,7 @@ object GameEvolution {
       val maxNode = compiled.blocks.flatMap(_.nodes.map(_.id)).max
       ActivationState.zero[Double](maxNode + 1)
     }
-    states <- integrate(100, members, Vector(initialGameState), initailActivationStates)
+    states <- integrate(60, members, Vector(initialGameState), initailActivationStates)
     
     updatedFitness = members.map { case (id, (_, _)) =>
       id -> states.last.individuals(id).score
@@ -157,17 +157,17 @@ object GameEvolution {
         transfer = transferFn,
         fitnessFn = (_, _) => 0,
         popsize = 20,
-        generations = 500,
+        generations = 1000,
         defaultBias = 1.0,
-        weightChance = 0.20,
+        weightChance = 0.10,
         resetChance = 0.01,
-        connectionChance = 0.15,
-        nodeChance = 0.10,
+        connectionChance = 0.10,
+        nodeChance = 0.05,
         eliteFraction = 0.10,
         minScore = None,
         recurrentSteps = 10,
         speciationConfig = SpeciationConfig(
-          15.0, 10.0, 0.2, 0.2
+          15.0, 10.0, 0.1, 0.35
         )
       )
       evolutionState = EvolutionState[Double, Inputs, Outputs, Double]()
