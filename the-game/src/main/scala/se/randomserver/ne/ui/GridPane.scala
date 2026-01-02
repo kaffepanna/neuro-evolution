@@ -1,28 +1,35 @@
-package se.randomserver.ne.the_game
+package se.randomserver.ne.ui
 
 import scalafx.scene.layout.Pane
 import scalafx.scene.canvas.Canvas
 import scalafx.beans.property.ObjectProperty
 import scalafx.scene.paint.Color
+import se.randomserver.ne.the_game.Game
+import se.randomserver.ne.view_models.GridViewModel
 
-class GridPane(gameStateProperty: ObjectProperty[Game.GameState]) extends Pane {
+class GridPane(gridViewModel: GridViewModel) extends Pane {
   val canvas = new Canvas()
+
+  prefWidth = 800
+  prefHeight = 400
+  maxHeight = Double.MaxValue
+  maxWidth = Double.MaxValue
 
   children.add(canvas)
 
   canvas.width <== width
   canvas.height <== height
 
-  gameStateProperty.onChange {
-    redraw(gameStateProperty.value)
+  gridViewModel.gameState.onChange {
+    gridViewModel.gameState.value.foreach(redraw)
   }
 
   canvas.width.onChange {
-      redraw(gameStateProperty.value)
+      gridViewModel.gameState.value.foreach(redraw)
   }
 
   canvas.height.onChange {
-    redraw(gameStateProperty.value)
+    gridViewModel.gameState.value.foreach(redraw)
   }
 
   private def redraw(gameState: Game.GameState): Unit = {

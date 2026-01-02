@@ -81,10 +81,10 @@ lazy val `the-game` = (project in file("./the-game"))
     Compile / scalacOptions ++= Seq(
       "-Ykind-projector:underscores"
     ),
-    libraryDependencies ++= catsDependencies ++ pureConfigDependencies ++ Seq(
-      "org.scalafx" %% "scalafx" % "21.0.0-R32",
-      "org.openjfx" % "javafx-base"     % "21.0.1" classifier osName,
-      "org.openjfx" % "javafx-graphics" % "21.0.1" classifier osName,
-      "org.openjfx" % "javafx-controls" % "21.0.1" classifier osName
+    libraryDependencies ++= catsDependencies ++ pureConfigDependencies ++ fs2Dependencies ++ Seq(
+      "org.scalafx" %% "scalafx" % "23.0.1-R34",
+      "org.openjfx" % "javafx-base"     % "23.0.1" classifier osName,
+      "org.openjfx" % "javafx-graphics" % "23.0.1" classifier osName,
+      "org.openjfx" % "javafx-controls" % "23.0.1" classifier osName
     )
   ).dependsOn(genome, evaluator, evolution)

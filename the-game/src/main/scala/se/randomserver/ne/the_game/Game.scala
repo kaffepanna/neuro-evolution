@@ -42,7 +42,7 @@ object Game {
     
     def random(rows: Int, cols: Int, inds: Set[(Id, TeamId)]): GameState =
       val r = new Random()
-      val walls = List.fill(Math.sqrt(rows.toDouble*cols.toDouble).toInt)(1).zipWithIndex.map(_.swap).toSet
+      val walls = List.fill(Math.sqrt(2*rows.toDouble*cols.toDouble).toInt)(1).zipWithIndex.map(_.swap).toSet
       val foods = List.fill(Math.sqrt(rows.toDouble*cols.toDouble).toInt)(2).zipWithIndex.map(_.swap).toSet
       val wallsPlaced = RandomPlacer.placeIds(walls, rows,cols).get.values.toSet
       val foodPlaced = RandomPlacer.placeIdsWithObstacles(foods, rows,cols, walls).get.values.toSet
