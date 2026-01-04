@@ -306,7 +306,7 @@ object Game {
 
     // 2️⃣ Food reward
     foodConsumed.foreach { case (id, _) =>
-      deltaScores += id -> (deltaScores(id) + 5.0)
+      deltaScores += id -> (deltaScores(id) + 2.0)
     }
 
     // 3️⃣ Adjacency combat: assign rewards to winners

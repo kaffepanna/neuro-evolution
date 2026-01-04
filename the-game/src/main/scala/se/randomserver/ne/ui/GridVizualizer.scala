@@ -50,6 +50,7 @@ import se.randomserver.ne.view_models.PlaybackViewModel
 import se.randomserver.ne.view_models.ScoreboardViewModel
 import scalafx.geometry.Pos
 import se.randomserver.ne.view_models.GenerationsViewModel
+import se.randomserver.ne.view_models.ChartViewModel
 
 object GridVisualizer extends JFXApp3 {
 
@@ -60,6 +61,9 @@ object GridVisualizer extends JFXApp3 {
     val playbackViewModel = new PlaybackViewModel(sessionViewModel)
     val scoreboardViewModel = new ScoreboardViewModel(sessionViewModel)
     val generationsViewModel = new GenerationsViewModel(sessionViewModel)
+    val chartViewModel = new ChartViewModel(session = sessionViewModel)
+
+    val chart = new ChartPane(chartViewModel) 
 
     val playbackConrol = new PlaybackControl(playbackViewModel)
 
@@ -72,6 +76,7 @@ object GridVisualizer extends JFXApp3 {
     }
 
     val borderPane = new BorderPane {
+      top = chart
       center = GridPane(gridViewModel)
       right = Scoreboard(scoreboardViewModel)
       bottom = bottomPane

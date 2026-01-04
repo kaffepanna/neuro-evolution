@@ -2,23 +2,36 @@ package se.randomserver.ne.evolution
 
 import se.randomserver.ne.genome.Genome
 import cats.data.StateT
-import cats.syntax.all.{*, given}
 import cats.Monad
-import se.randomserver.ne.genome.SpeciationConfig
 import cats.data.ReaderT
 import cats.Applicative
-import scala.math.Fractional.Implicits.infixFractionalOps
 import cats.effect.std.Random
+import cats.mtl.Stateful
+import cats.mtl.Ask
+import cats.syntax.flatMap.*
+import cats.syntax.functor.*
+import cats.syntax.applicative.*
+import cats.syntax.traverse.*
+import cats.syntax.foldable.*
+import spire.compat.ordering
+import spire.syntax.all.*
+import spire.math.*
+import spire.implicits.given
+import spire.algebra.{Order, Ring, Field, Monoid}
+import se.randomserver.ne.genome.SpeciationConfig
 import se.randomserver.ne.genome.GenePool.cross
 import se.randomserver.ne.genome.GenePool.mutate
 import se.randomserver.ne.genome.RandomRange
-import cats.Order
 import se.randomserver.ne.genome.GenePool.{*, given}
 import se.randomserver.ne.genome.GenePool
 import se.randomserver.ne.evolution.EvolutionConfig
 import se.randomserver.ne.evaluator.Compiler
 import se.randomserver.ne.evaluator.Runner
 import se.randomserver.ne.evaluator.Compiler.CompiledNetwork
+import algebra.ring.Semiring
+import se.randomserver.ne.genome.HasGenePool
+import algebra.ring.Signed
+
 
 object Evolution {
   trait Epsilon[W] {
@@ -36,34 +49,29 @@ object Evolution {
     def apply[W](using e: Epsilon[W]): W = e.zero
   }
   
-  case class EvaluatedGenome[W, I <: Int, O <: Int, S](
-    genome: Genome[W, I, O],
+  case class EvaluatedGenome[W, S](
+    genome: Genome[W],
     rawFitness: Option[S],
     adjustedFitness: Option[S],
     compiled: Option[CompiledNetwork[W]]
   )
 
-  case class Species[W, I <: Int, O <: Int](
+  case class Species[W](
     id: Int,
     representative: GenomeId,
     members: Vector[GenomeId],
     age: Int
   )
 
-  case class EvolutionState[W, I <: Int, O <: Int, S](
-    species: Vector[Species[W, I, O]] = Vector.empty[Species[W, I, O]],
-    population: Map[GenomeId, Genome[W, I, O]] = Map.empty[GenomeId, Genome[W, I, O]],
+  final case class EvolutionState[W, S](
+    species: Vector[Species[W]] = Vector.empty[Species[W]],
+    population: Map[GenomeId, Genome[W]] = Map.empty[GenomeId, Genome[W]],
     fitness: Map[GenomeId, S] = Map.empty[GenomeId, S],
     adjustedFitness: Map[GenomeId, S] = Map.empty[GenomeId, S],
     generation: Int = 0,
     nextSpeciesId: SpeciesId = 0,
     nextGenomeId: GenomeId = 0
-  ) {
-    type Weight = W
-    type Inputs = I
-    type Outputs = O
-    type Score = S
-  }
+  )
 
   case class EvolutionEnv[W, S](
     data: List[(List[W], List[W])],
@@ -82,80 +90,42 @@ object Evolution {
     speciationConfig: SpeciationConfig
   )
 
-  opaque type EvolutionStateT[F[_], W, I <: Int, O <: Int, S, A] = StateT[F, EvolutionState[W, I, O, S], A]
+  type HasEvolutionEnv[F[_], W, S] = Ask[F, EvolutionEnv[W, S]]
 
-  opaque type EvolutionT[F[_], W, I <: Int, O <: Int, S, A] = ReaderT[
-    EvolutionStateT[GenePoolStateT[F, *], W, I, O, S, *],
-    EvolutionEnv[W, S],
-    A
-  ]
+  object HasEvolutionEnv:
+    def apply[F[_], W, S](using he: HasEvolutionEnv[F, W, S]) = he
 
-  extension [F[_], W, I <: Int, O <: Int, S, A](et: EvolutionT[F, W, I, O, S, A])
-    def runEvolution(env: EvolutionEnv[W, S], state: EvolutionState[W, I, O, S], gp: GenePool)(using F: Monad[F]) =
-      et.run(env).run(state).run(gp)
+  type HasEvolutionState[F[_], W, S] = Stateful[F, EvolutionState[W, S]]
 
-  given [F[_], W, I <: Int, O <: Int, S](using ap: Monad[StateT[F, EvolutionState[W, I, O, S], _]]): Monad[EvolutionStateT[F, W, I, O, S, _]] = ap
-  given [F[_], W, I <: Int, O <: Int, S](using ap: Monad[ReaderT[EvolutionStateT[GenePoolStateT[F, *], W, I, O, S, *], EvolutionEnv[W, S], _]]): Monad[EvolutionT[F, W, I, O, S, _]] = ap
+  object HasEvolutionState:
+    def apply[F[_], W, S](using hs: HasEvolutionState[F, W, S]) = hs
 
-  object EvolutionT {
-    def pure[F[_]: Monad, W, I <: Int, O  <: Int, S, A](a: A): EvolutionT[F, W, I, O, S, A] =
-      ReaderT.pure[
-        EvolutionStateT[GenePoolStateT[F, *], W, I, O, S, *],
-        EvolutionEnv[W, S],
-        A
-      ](a)
+  def modifyState[F[_], W, S, B](fn: EvolutionState[W, S] => F[(EvolutionState[W, S], B)])(using Monad[F], HasEvolutionState[F, W, S]): F[B] = for 
+    state <- HasEvolutionState[F, W, S].get
+    ret <- fn(state)
+    (modified, b) = ret
+    _ <- HasEvolutionState[F, W, S].set(modified)
+  yield b
 
-    def ask[F[_]: Monad, W, I <: Int, O <: Int, S] = getEnv[F, W, I, O, S]
+  def getState[F[_], W, S](using hs: HasEvolutionState[F, W, S]): F[EvolutionState[W, S]] = hs.get
+  def setState[F[_], W, S](using hs: HasEvolutionState[F, W, S]) = hs.set
+  def getEnv[F[_], W, S](using he: HasEvolutionEnv[F, W, S]): F[EvolutionEnv[W, S]] = he.ask
 
-    def getEnv[F[_]: Monad, W, I <: Int, O <: Int, S]: EvolutionT[F, W, I, O, S, EvolutionEnv[W, S]] =
-      ReaderT.ask[
-        EvolutionStateT[GenePoolStateT[F, *], W, I, O, S, *],
-        EvolutionEnv[W, S]
-      ]
 
-    def getState[F[_]: Monad, W, I <: Int, O <: Int, S]: EvolutionT[F, W, I, O, S, EvolutionState[W, I, O, S]] =
-      ReaderT.liftF(
-        StateT.get[
-          GenePoolStateT[F, *],
-          EvolutionState[W, I, O, S]
-        ]
-      )
-
-    def modifyState[F[_]: Monad, W, I <: Int, O <: Int, S](
-      f: EvolutionState[W, I, O, S] => EvolutionState[W, I, O, S]
-    ): EvolutionT[F, W, I, O, S, Unit] =
-      ReaderT.liftF(
-        StateT.modify[
-          GenePoolStateT[F, *],
-          EvolutionState[W, I, O, S]
-        ](f)
-      )
-
-    def liftF[F[_]: Monad, W, I <: Int, O <: Int, S, A](fa: F[A])
-      : EvolutionT[F, W, I, O, S, A] =
-      ReaderT.liftF(StateT.liftF(GenePool.liftF(fa)))
-
-    def liftGenePool[F[_]: Monad, W, I <: Int, O <: Int, S, A](gp: GenePoolStateT[F, A]): EvolutionT[F, W, I, O, S, A] =
-      ReaderT.liftF(StateT.liftF(gp))
+  def nextSpeciesId[F[_], W, S](using Monad[F], HasEvolutionState[F, W, S]): F[SpeciesId] = modifyState { (state: EvolutionState[W, S]) =>
+      val nextId = state.nextSpeciesId + 1
+      (state.copy(nextSpeciesId = nextId) -> nextId).pure
   }
 
-  def nextSpeciesId[F[_]: Monad, W, I <: Int, O <: Int, S]: EvolutionT[F, W, I, O, S, SpeciesId] =
-    EvolutionT.getState[F, W, I, O, S] >>= { state =>
-      val nextId = state.nextSpeciesId + 1
-      EvolutionT.modifyState[F, W, I, O ,S] { state => state.copy(nextSpeciesId = nextId) } 
-        >> EvolutionT.pure(nextId)
-    }
+  def nextGenomeId[F[_], W, S](using Monad[F], HasEvolutionState[F, W, S]): F[GenomeId] = modifyState { (state: EvolutionState[W, S]) =>
+    val nextId = state.nextGenomeId + 1
+    (state.copy(nextGenomeId = nextId), nextId).pure   
+  }
 
-  def nextGenomeId[F[_]: Monad, W, I <: Int, O <: Int, S]: EvolutionT[F, W, I, O, S, GenomeId] = for {
-    state <- EvolutionT.getState[F, W, I, O, S]
-    nextId = state.nextGenomeId + 1
-    _ <- EvolutionT.modifyState[F, W, I, O, S] { state => state.copy(nextGenomeId = nextId) }
-  } yield nextId
-
-  def evaluateFitness[F[_]: Monad, W: Numeric: Fractional, I <: Int, O <: Int, S: Ordering]: EvolutionT[F, W, I, O, S, Unit] = for {
-    env <- EvolutionT.getEnv[F, W, I, O, S]
+  def evaluateFitness[F[_]: Monad, W: Semiring, S: Order](using HasEvolutionEnv[F, W, S], HasEvolutionState[F, W, S]): F[Unit] = for {
+    env <- getEnv[F, W, S]
     expected = env.data.map(_._2)
-    state <- EvolutionT.getState[F, W, I, O, S]
+    state <- HasEvolutionState[F, W, S].get
     scores = state.population.map {
       case (id, genome) =>
         val compiled = Compiler.compileGenome(genome, env.transfer)
@@ -165,70 +135,60 @@ object Evolution {
         }
         id -> env.fitnessFn(outputs, expected)
     }
-    _ <- EvolutionT.modifyState[F, W, I, O, S](state => state.copy(fitness = scores))
+    _ <- setState(state.copy(fitness = scores))
   } yield ()
 
-  def adjustFitnessSharing[F[_]: Monad, W, I <: Int, O <: Int, S: Fractional]: EvolutionT[F, W, I, O, S, Unit] = for {
-    state <- EvolutionT.getState[F, W, I, O, S]
-    f = summon[Fractional[S]]
+  def adjustFitnessSharing[F[_]: Monad, W, S: Field](using HasEvolutionState[F, W, S]): F[Unit] = for {
+    state <- getState[F, W, S]
     adjusted = state.fitness.map {
       case (genomeId, score) =>
         val speciesSize = state.species.find(_.members.contains(genomeId)) match {
           case Some(species) => species.members.size
           case None => throw new IllegalStateException(s"Genome: $genomeId not member of any species")
         }
-        genomeId -> f.div(state.fitness(genomeId), f.fromInt(speciesSize))
+        genomeId -> state.fitness(genomeId) / speciesSize
     }
-    _ <- EvolutionT.modifyState[F, W, I, O, S](state => state.copy(adjustedFitness = adjusted))
+    _ <- setState(state.copy(adjustedFitness = adjusted))
   } yield ()
 
-  def cullSpecies[F[_]: Monad, W, I <: Int, O <: Int, S: Ordering]
-  : EvolutionT[F, W, I, O, S, Unit] = for {
-    env <- EvolutionT.getEnv[F, W, I, O, S]
-    state <- EvolutionT.getState[F, W, I, O, S]
-    updated = state.species.map[Species[W, I, O]] { species =>
-      val sorted = species.members.sortBy(state.fitness)(Ordering[S].reverse)
+  def cullSpecies[F[_]: Monad, W, S: Order](using HasEvolutionEnv[F, W, S], HasEvolutionState[F, W, S]): F[Unit] = for {
+    env <- getEnv[F, W, S]
+    state <- getState[F, W, S]
+    updated = state.species.map[Species[W]] { species =>
+      val sorted = species.members.sortBy(state.fitness).reverse
       val keepN = math.max(1, math.ceil(sorted.size * env.eliteFraction).toInt)
       species.copy(members = sorted.take(keepN))
     }
-    _ <- EvolutionT.modifyState[F, W, I, O ,S](state => state.copy(species = updated))
+    _ <- setState(state.copy(species = updated))
   } yield ()
 
-  def allocateOffspringPerSpecies[
-    F[_]: Monad,
-    W,
-    I <: Int,
-    O <: Int,
-    S: Fractional: Numeric: Epsilon
-  ]: EvolutionT[F, W, I, O, S, Map[SpeciesId, Int]] =
+  def allocateOffspringPerSpecies[F[_]: Monad, W, S: Numeric: Order](using HasEvolutionEnv[F, W, S], HasEvolutionState[F, W, S]): F[Map[SpeciesId, Int]] =
     for {
-      env   <- EvolutionT.getEnv[F, W, I, O, S]
-      state <- EvolutionT.getState[F, W, I, O, S]
+      env   <- getEnv[F, W, S]
+      state <- getState[F, W, S]
       // 1. Compute total adjusted fitness
       speciesFitnesses = state.species.map { species =>
-        val fitnessSum = species.members.map(state.adjustedFitness).foldLeft(Fractional[S].zero)(_ + _)
+        val fitnessSum = species.members.map(state.adjustedFitness).foldLeft(Numeric[S].zero)(_ + _)
         species.id -> fitnessSum
       }
 
       minFitness = speciesFitnesses.map(_._2).min
 
-      shifted = if (Fractional[S].lteq(minFitness, Fractional[S].zero)) speciesFitnesses.map { case (id, f) => id -> (f - minFitness + Epsilon[S]) }
+      shifted = if (minFitness <= Numeric[S].zero) speciesFitnesses.map { case (id, f) => id -> (f - minFitness) }
                 else speciesFitnesses
 
       totalFitness =
-        shifted.map(_._2).foldLeft(Fractional[S].zero)(_ + _)
+        shifted.map(_._2).foldLeft(Numeric[S].zero)(_ + _)
 
       // 2. Raw allocation
       rawAllocations =
-        if (totalFitness == Fractional[S].zero)
+        if (totalFitness == Numeric[S].zero)
           // fallback: uniform distribution
           state.species.map(sp => sp.id -> 1)
         else
           shifted.map { case (id, fit) =>
-            val share =
-              Fractional[S].toDouble(fit / totalFitness)
-            val count =
-              math.round(share * env.popsize).toInt
+            val share = (fit / totalFitness) * env.popsize
+            val count = Numeric[S].floor((share)).toInt
             id -> count
           }
 
@@ -254,46 +214,49 @@ object Evolution {
 
     } yield normalized.toMap
 
-  def reproduce[F[_]: Monad, W: Numeric: Order, I <: Int, O <: Int, S: Ordering: Fractional](
-    offspringCounts: Map[GenomeId, Int]
-  )(using R: Random[F], RR: RandomRange[F, W]): EvolutionT[F, W, I, O, S, Map[GenomeId, Genome[W, I, O]]] = for {
-      env   <- EvolutionT.getEnv[F, W, I, O, S]
-      state <- EvolutionT.getState[F, W, I, O, S]
+  def reproduce[F[_]: Monad, W: Semiring: Order, S: Order](
+    offspringCounts: Map[SpeciesId, Int]
+  )(using Random[F], RandomRange[F, W], HasEvolutionEnv[F, W, S], HasEvolutionState[F, W, S], HasGenePool[F]): F[Map[GenomeId, Genome[W]]] = for {
+      env   <- getEnv[F, W, S]
+      state <- getState[F, W, S]
       children <- state.species.flatMap { species =>
-        val sortedMembers = species.members.sortBy(state.adjustedFitness)(Ordering[S].reverse)
+        val sortedMembers = species.members.sortBy(state.adjustedFitness).reverse
         val count = offspringCounts.getOrElse(species.id, 0)
         val eliteCount = math.max(1, (species.members.size * env.eliteFraction).ceil.toInt)
         val elites = sortedMembers.take(eliteCount).map(id => id -> state.population(id))
         val breeders = sortedMembers.take(math.max(2, sortedMembers.size / 2)).map(id => id -> state.population(id))
+        if (count <= 0)
+          Vector.empty
+        else {
+          val childrenCount = math.max(0, count - elites.size)
+          val children = Vector.fill(childrenCount) {
+            for {
+              id1p1 <- Random[F].nextIntBounded(breeders.size).map(breeders(_))
+              id2p2 <- Random[F].nextIntBounded(breeders.size).map(breeders(_))
+              (id1, p1) = id1p1
+              (id2, p2) = id2p2
+              (dominant, recessive) = if (state.adjustedFitness(id1) >= state.adjustedFitness(id2)) (p1, p2)
+                                      else (p1, p2)
+              child <- 
+                cross[F,W](dominant, recessive) >>= mutate[F, W](env.weightChance, env.connectionChance, env.nodeChance, env.resetChance)
 
-        val childrenCount = math.max(0, count - elites.size)
-        val children = Vector.fill(childrenCount) {
-          for {
-            id1p1 <- EvolutionT.liftF(R.nextIntBounded(breeders.size).map(breeders(_)))
-            id2p2 <- EvolutionT.liftF(R.nextIntBounded(breeders.size).map(breeders(_)))
-            (id1, p1) = id1p1
-            (id2, p2) = id2p2
-            (dominant, recessive) = if (Ordering[S].gteq(state.adjustedFitness(id1), state.adjustedFitness(id2))) (p1, p2)
-                                    else (p1, p2)
-            child <- EvolutionT.liftGenePool[F, W, I, O, S, Genome[W, I, O]] {
-              cross[F,W,I,O](dominant, recessive) >>= mutate[F, W, I, O](env.weightChance, env.connectionChance, env.nodeChance, env.resetChance)
-            }
-            newId <- nextGenomeId
-          } yield newId -> child
+              newId <- nextGenomeId
+            } yield newId -> child
+          }
+          children ++ elites.map(Monad[F].pure)
         }
-        children ++ elites.map(EvolutionT.pure)
     }.sequence
   } yield children.toMap
 
-  def speciate[F[_]: Monad, W: Fractional, I <: Int, O <: Int, S](
-    newPopulation: Map[GenomeId, Genome[W, I, O]]
-  ): EvolutionT[F, W, I, O, S, Unit] = for {
-    env   <- EvolutionT.getEnv[F, W, I, O, S]
-    state <- EvolutionT.getState[F, W, I, O, S]
+  def speciate[F[_]: Monad, W: Field: Signed: Order, S](
+    newPopulation: Map[GenomeId, Genome[W]]
+  )(using HasEvolutionEnv[F, W, S], HasEvolutionState[F, W, S]): F[Unit] = for {
+    env   <- getEnv[F, W, S]
+    state <- getState[F, W, S]
 
     // Reset members but keep species identity
     clearedSpecies =
-      state.species.map[Species[W, I, O]](s => s.copy(members = Vector.empty))
+      state.species.map[Species[W]](s => s.copy(members = Vector.empty))
 
     // Assign genomes to existing species if possible
     (assignedSpecies, unassigned) =
@@ -307,7 +270,7 @@ object Evolution {
 
             case idx =>
               val s = speciesAcc(idx)
-              val updated: Species[W, I, O] =
+              val updated: Species[W] =
                 s.copy(members = s.members :+ genomeId)
               (speciesAcc.updated(idx, updated), unassignedAcc)
           }
@@ -316,9 +279,9 @@ object Evolution {
     clusteredNewSpecies = {
       def cluster(
         remaining: Vector[GenomeId],
-        acc: Vector[Species[W, I, O]],
+        acc: Vector[Species[W]],
         nextId: SpeciesId
-      ): Vector[Species[W, I, O]] =
+      ): Vector[Species[W]] =
         remaining match {
           case Vector() => acc
 
@@ -331,7 +294,7 @@ object Evolution {
             val members = (rep +: same)
 
             val species =
-              Species[W, I, O](
+              Species[W](
                 id = nextId,
                 representative = rep,
                 members = members.toVector,
@@ -350,31 +313,33 @@ object Evolution {
     survivingSpecies =
       assignedSpecies.filter(_.members.nonEmpty) ++ clusteredNewSpecies
 
-    _ <- EvolutionT.modifyState[F, W, I, O, S](
-      _.copy(species = survivingSpecies, nextSpeciesId = state.nextSpeciesId + clusteredNewSpecies.size, population = newPopulation)
+    _ <- setState[F, W, S](
+      state.copy(species = survivingSpecies, nextSpeciesId = state.nextSpeciesId + clusteredNewSpecies.size, population = newPopulation)
     )
 
   } yield ()
 
-  def reassignRepresentatives[F[_]: Monad, W, I <: Int, O <: Int, S: Ordering: Fractional]: EvolutionT[F, W, I, O, S, Unit] =
+  def reassignRepresentatives[F[_]: Monad, W, S: Order: Semiring](using HasEvolutionState[F, W, S], Random[F]): F[Unit] =
     for {
-      state <- EvolutionT.getState[F, W, I, O, S]
-      newSpecies = state.species.map { species =>
-        if (species.members.isEmpty) species
+      state <- getState[F, W, S]
+      newSpecies <- state.species.map { species =>
+        if (species.members.isEmpty) species.pure[F]
         else {
           // Pick the highest-fitness member as representative
-          val bestMember = species.members.maxBy(state.adjustedFitness.getOrElse(_, Fractional[S].zero))(Ordering[S].reverse)
-          species.copy(representative = bestMember)
+          //val bestMember = species.members.maxBy(state.adjustedFitness.getOrElse(_, Semiring[S].zero))(using Ordering[S].reverse)
+          Random[F].betweenInt(0, species.members.size) >>= { rep =>
+            species.copy(representative = species.members(rep)).pure
+          }
         }
-      }
-      _ <- EvolutionT.modifyState[F, W, I, O, S](_.copy(species = newSpecies))
+      }.sequence
+      _ <- setState(state.copy(species = newSpecies))
     } yield ()
 
-  def debug[F[_]: Monad: Random, W: Fractional: Order, I <: Int, O <: Int, S: Fractional: Ordering]: EvolutionT[F, W, I, O, S, Unit] = for {
-    state <- EvolutionT.getState[F, W, I, O, S]
+  def debug[F[_]: Monad: Random, W: Order, S: Semiring: Order](using HasEvolutionState[F, W, S]): F[Unit] = for {
+    state <- getState[F, W, S]
     speciesFitnesses = state.species.map { sp =>
       val fitnessSum =
-        sp.members.map(state.adjustedFitness).foldLeft(Fractional[S].zero)(_ + _)
+        sp.members.map(state.adjustedFitness).foldLeft(Semiring[S].zero)(_ + _)
       sp.id -> fitnessSum 
     }.toMap
     currentGen = state.generation
@@ -388,30 +353,30 @@ object Evolution {
     }
   } yield ()
 
-  def evolveStep[F[_]: Monad: Random, W: Fractional: Order, I <: Int, O <: Int, S: Fractional: Ordering: Epsilon](using RandomRange[F, W]): EvolutionT[F, W, I, O, S, Unit] = for {
-    _ <- evaluateFitness
-    _ <- adjustFitnessSharing
-    _ <- debug
-    _ <- cullSpecies
-    offspringPlan <- allocateOffspringPerSpecies
-    newPop <- reproduce(offspringPlan)
+  def evolveStep[F[_]: Monad: Random, W: Field: Signed: Semiring: Order, S: Field: Numeric: Semiring: Order](using RandomRange[F, W], HasEvolutionEnv[F, W, S], HasEvolutionState[F, W, S], HasGenePool[F]): F[Unit] = for {
+    _ <- evaluateFitness[F, W, S]
+    _ <- adjustFitnessSharing[F, W, S]
+    _ <- debug[F, W, S]
+    _ <- cullSpecies[F, W, S]
+    offspringPlan <- allocateOffspringPerSpecies[F, W, S]
+    newPop <- reproduce[F, W, S](offspringPlan)
     _ <- speciate(newPop)
-    _ <- reassignRepresentatives
-    _ <- EvolutionT.modifyState[F, W, I, O, S] { state =>
-      val ageIncremented = state.species.map[Species[W, I, O]](s => s.copy(age = s.age + 1))
-      state.copy(generation = state.generation + 1, species = ageIncremented)
+    _ <- reassignRepresentatives[F, W, S]
+    _ <- modifyState[F, W, S, Unit] { state =>
+      val ageIncremented = state.species.map[Species[W]](s => s.copy(age = s.age + 1))
+      (state.copy(generation = state.generation + 1, species = ageIncremented) -> ()).pure
     }
   } yield ()
 
-  def evolve[F[_]: Monad: Random, W: Fractional: Order, I <: Int: ValueOf, O <: Int: ValueOf, S: Fractional: Ordering: Epsilon](using RandomRange[F, W]): EvolutionT[F, W, I, O, S, Unit] = for {
-    env <- EvolutionT.getEnv[F, W, I, O, S]
-    genomes <- EvolutionT.liftGenePool[F, W, I, O, S, Genome[W, I, O]](genome[F, W, I, O]()).replicateA(env.popsize)
+  def evolve[F[_]: Monad: Random, W: Field: Signed: Semiring: Order, I <: Int : ValueOf, O <: Int: ValueOf, S: Field: Numeric: Semiring: Order](using RandomRange[F, W], HasEvolutionEnv[F, W, S], HasEvolutionState[F, W, S], HasGenePool[F]): F[Unit] = for {
+    env <- getEnv[F, W, S]
+    genomes <- genome[F, W](valueOf[I], valueOf[O]).replicateA(env.popsize)
     initialPop <- genomes.map { genome =>
-        nextGenomeId >>= (id => EvolutionT.pure[F, W, I, O, S, (GenomeId, Genome[W, I, O])](id -> genome))
+        nextGenomeId >>= (id => Monad[F].pure(id -> genome))
     }.sequence
     _ <- speciate(initialPop.toMap)
-    _ <- List.fill(env.generations)(()).traverse_(_ => evolveStep[F, W, I, O, S])
-    _ <- evaluateFitness
+    _ <- List.fill(env.generations)(()).traverse_(_ => evolveStep[F, W, S])
+    _ <- evaluateFitness[F, W, S]
   } yield ()
     
 

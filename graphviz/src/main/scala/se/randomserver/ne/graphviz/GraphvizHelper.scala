@@ -76,7 +76,7 @@ object GraphvizHelper:
     }
   }
 
-  def graphGenome(g: Genome[Double, 2, 1]): GraphViz.Grammar[Unit] = {
+  def graphGenome(g: Genome[Double]): GraphViz.Grammar[Unit] = {
     import GraphViz._
     digraph {
       for {

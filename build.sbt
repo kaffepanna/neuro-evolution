@@ -1,6 +1,6 @@
 ThisBuild / version := "0.1.0-SNAPSHOT"
 
-ThisBuild / scalaVersion := "3.3.6"
+ThisBuild / scalaVersion := "3.7.4"
 
 lazy val osName = System.getProperty("os.name").toLowerCase match {
   case n if n.contains("win")   => "win"
@@ -25,6 +25,10 @@ lazy val fs2Dependencies = Seq(
     "co.fs2"        %% "fs2-io"      % "3.12.2",
 )
 
+lazy val spireDependencies = Seq {
+  "org.typelevel" %% "spire" % "0.18.0",
+}
+
 lazy val `graph-tools` = (project in file("./graph-tools"))
   .settings(
     name := "neuro-evolution-graph-tools",
@@ -39,7 +43,7 @@ lazy val genome = (project in file("./genome"))
     Compile / scalacOptions ++= Seq(
       "-Ykind-projector:underscores"
     ),
-    libraryDependencies ++= catsDependencies ++ pureConfigDependencies
+    libraryDependencies ++= catsDependencies ++ spireDependencies ++ pureConfigDependencies
   )
 
 lazy val evaluator = (project in file("./evaluator"))
@@ -48,7 +52,7 @@ lazy val evaluator = (project in file("./evaluator"))
     Compile / scalacOptions ++= Seq(
       "-Ykind-projector:underscores"
     ),
-    libraryDependencies ++= catsDependencies
+    libraryDependencies ++= catsDependencies ++ spireDependencies
   ).dependsOn(genome, `graph-tools`)
 
 lazy val evolution = (project in file("./evolution"))
@@ -57,7 +61,7 @@ lazy val evolution = (project in file("./evolution"))
     Compile / scalacOptions ++= Seq(
       "-Ykind-projector:underscores"
     ),
-    libraryDependencies ++= catsDependencies
+    libraryDependencies ++= catsDependencies ++ spireDependencies
   ).dependsOn(genome, evaluator)
 
 lazy val graphviz = (project in file("./graphviz"))
@@ -81,7 +85,7 @@ lazy val `the-game` = (project in file("./the-game"))
     Compile / scalacOptions ++= Seq(
       "-Ykind-projector:underscores"
     ),
-    libraryDependencies ++= catsDependencies ++ pureConfigDependencies ++ fs2Dependencies ++ Seq(
+    libraryDependencies ++= catsDependencies ++ pureConfigDependencies ++ fs2Dependencies ++ spireDependencies ++ Seq(
       "org.scalafx" %% "scalafx" % "23.0.1-R34",
       "org.openjfx" % "javafx-base"     % "23.0.1" classifier osName,
       "org.openjfx" % "javafx-graphics" % "23.0.1" classifier osName,

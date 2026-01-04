@@ -13,9 +13,11 @@ import scalafx.application.Platform
 import se.randomserver.ne.GameEvolution
 import scalafx.collections.ObservableMap.Change
 import scalafx.collections.ObservableMap
+import se.randomserver.ne.evolution.Evolution.SpeciesId
 
 class SessionViewModel {
   val generations = new ObservableHashMap[Long, Vector[GameState]]()
+  val speciesFitness = new ObservableHashMap[Long, Map[SpeciesId, Double]]
   val currentGenerationId = LongProperty(-1)
   val currentGameStateIndex = IntegerProperty(-1)
 
@@ -47,6 +49,7 @@ class SessionViewModel {
 
   val traceIO: IO[Unit] = for {
     queue <- Queue.unbounded[IO, Vector[GameState]]
+    fitnessQueue <- Queue.unbounded[IO, Map[SpeciesId, Double]]
     stream = fs2.Stream.fromQueueUnterminated(queue).zipWithIndex.evalTap { (state, id) =>
       IO { 
         Platform.runLater {
@@ -54,7 +57,14 @@ class SessionViewModel {
         }
       }
     }.compile.drain
-    _ <- (GameEvolution.run(queue), stream).parTupled
+    stream2 = fs2.Stream.fromQueueUnterminated(fitnessQueue).zipWithIndex.evalTap { (fitness, gen) =>
+      IO {
+        Platform.runLater {
+          speciesFitness.addOne(gen -> fitness)
+        }
+      }
+    }.compile.drain
+    _ <- GameEvolution.run(queue, fitnessQueue).race(stream2.race(stream))
   } yield ()
 
   def start() = {

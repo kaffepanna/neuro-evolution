@@ -43,7 +43,7 @@ object Compiler {
     transfer: W => W
   )
 
-  def compileGenomeToBlockGraph(genome: Genome[?, ?, ?]): BlockGraph = {
+  def compileGenomeToBlockGraph(genome: Genome[?]): BlockGraph = {
     val edges: Map[Int, Set[Int]] =
       genome.genes.toVector
         .filter(_.enabled)
@@ -77,7 +77,7 @@ object Compiler {
     )
   }
 
-  def compileGenome[W](genome: Genome[W, ?, ?], transfer: W => W): CompiledNetwork[W] = {
+  def compileGenome[W](genome: Genome[W], transfer: W => W): CompiledNetwork[W] = {
     // sorted block graph
     val blockGraph: BlockGraph = compileGenomeToBlockGraph(genome)
     val enabledGenes = genome.genes.filter(_.enabled)

@@ -4,8 +4,7 @@ import cats.data.{State, StateT}
 import cats.effect.std.{QueueSource, Random}
 import cats.effect.{ExitCode, IO, IOApp}
 import cats.syntax.all.{*, given}
-import se.randomserver.ne.genome.GenePool.{GenePoolStateT, given}
-import se.randomserver.ne.genome.{GenePool, Genome}
+import se.randomserver.ne.genome.{GenePool, Genome, HasGenePool}
 import se.randomserver.ne.graphviz.StringCompiler
 import se.randomserver.ne.graphviz.GraphvizHelper
 
@@ -14,6 +13,7 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Future}
 import se.randomserver.ne.evolution.EvolutionConfig
+import se.randomserver.ne.evolution.Evolution.{HasEvolutionEnv, HasEvolutionState}
 import se.randomserver.ne.genome.SpeciationConfig
 import pureconfig.ConfigReader
 import pureconfig.ConfigSource
@@ -24,6 +24,10 @@ import se.randomserver.ne.evolution.Evolution.EvolutionEnv
 import se.randomserver.ne.evolution.Evolution.{*, given}
 import se.randomserver.ne.genome.RandomRange
 import se.randomserver.ne.genome.RandomRangeConfig
+import cats.mtl.Ask
+import cats.effect.kernel.Ref
+import cats.mtl.Stateful
+import spire.implicits.*
 
 case class AppConfig(
   evolution: EvolutionConfig,
@@ -98,11 +102,24 @@ object App extends IOApp {
         speciationConfig = sCfg,
       )
 
-      evolutionState = EvolutionState[Double, 2, 1, Double]()
+      evolutionStateRef <- Ref.of[IO, EvolutionState[Double, Double]](EvolutionState[Double, Double]()) //EvolutionState[Double, Double]()
+      genePoolStateRef <- Ref.of[IO, GenePool](GenePool(0, Map.empty))
 
-      genePoolState = GenePool(0, Map.empty)
+      given HasEvolutionEnv[IO, Double, Double] = Ask.const[IO, EvolutionEnv[Double, Double]](evolutionEnv)
+      given HasEvolutionState[IO, Double, Double] = new Stateful[IO, EvolutionState[Double, Double]] {
+        override def monad: Monad[IO] = summon[Monad[IO]]
+        override def get: IO[EvolutionState[Double, Double]] = evolutionStateRef.get
+        override def set(s: EvolutionState[Double, Double]): IO[Unit] = evolutionStateRef.set(s)
+      }
+      given HasGenePool[IO] = new Stateful[IO, GenePool] {
+        override def monad: Monad[IO] = summon[Monad[IO]]
+        override def get: IO[GenePool] = genePoolStateRef.get
+        override def set(s: GenePool): IO[Unit] = genePoolStateRef.set(s)
+      }
 
-      finalState <- evolve[IO, Double, 2, 1, Double]().runEvolution(evolutionEnv, evolutionState, genePoolState).map(_._2._1)
+
+      _ <- evolve[IO, Double, 2, 1, Double]
+      finalState <- evolutionStateRef.get
       winners = finalState.species.map { species =>
         species.members.maxByOption(finalState.fitness)
       }.flatten.filter(m => finalState.fitness.get(m).exists(_ > 0.85)).sortBy(finalState.population(_).genes.size).map(a => se.randomserver.ne.evaluator.Compiler.compileGenome(finalState.population(a), identity))
