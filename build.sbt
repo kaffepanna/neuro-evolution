@@ -87,6 +87,8 @@ lazy val `the-game` = (project in file("./the-game"))
     ),
     libraryDependencies ++= catsDependencies ++ pureConfigDependencies ++ fs2Dependencies ++ spireDependencies ++ Seq(
       "org.scalafx" %% "scalafx" % "23.0.1-R34",
+      "org.kordamp.ikonli" % "ikonli-javafx" % "12.3.1",
+      "org.kordamp.ikonli" % "ikonli-fontawesome5-pack" % "12.3.1",
       "org.openjfx" % "javafx-base"     % "23.0.1" classifier osName,
       "org.openjfx" % "javafx-graphics" % "23.0.1" classifier osName,
       "org.openjfx" % "javafx-controls" % "23.0.1" classifier osName

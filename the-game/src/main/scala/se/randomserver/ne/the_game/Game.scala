@@ -50,12 +50,13 @@ object Game {
     
     def random(rows: Int, cols: Int, inds: Set[(Id, TeamId)]): GameState =
       val r = new Random()
-      val walled = GridEditorApp.loadGrid(Paths.get("/home/patrik/sources/neuro-evolution/30x30.grid")).right.get.map { row =>
-        row.map {
-          case 1 => Cell.Obstacle
-          case _ => Cell.Empty
-        }
-      }
+      val walled = Vector.fill(rows, cols)(Cell.Empty)
+      //val walled = GridEditorApp.loadGrid(Paths.get("/home/patrik/sources/neuro-evolution/30x30.grid")).right.get.map { row =>
+      //  row.map {
+      //    case 1 => Cell.Obstacle
+      //    case _ => Cell.Empty
+      //  }
+      //}
       val obstacles = walled.zipWithIndex.flatMap { case (rows, r) => rows.zipWithIndex.collect { case (Cell.Obstacle, c) => (r, c)} }.toSet
       val foods = List.fill(Math.sqrt(rows.toDouble*cols.toDouble).toInt)(2).zipWithIndex.map(_.swap).toSet
       val foodPlaced = RandomPlacer.placeIdsWithObstacles(foods, rows,cols, obstacles).get.values.toSet
@@ -64,7 +65,10 @@ object Game {
         case Some(value) => value
         case None => throw IllegalStateException("cannot place individuals")
       
-      val grid2 = foodPlaced.foldLeft(walled) { (g, pos) =>
+      val grid = obstacles.foldLeft(Vector.fill(rows, cols)(Cell.Empty)) { (g, pos) =>
+        g.updated(pos._1, g(pos._1).updated(pos._2, Cell.Obstacle))
+      }
+      val grid2 = foodPlaced.foldLeft(grid) { (g, pos) =>
         g.updated(pos._1, g(pos._1).updated(pos._2, Cell.Food))
       }
 
@@ -299,14 +303,14 @@ object Game {
     newState.individuals.foreach { case (id, ind) =>
       moveResolutions.get(id) match {
         case Some(Resolution.Move(pose)) if !oldState.individuals(id).visited.contains(pose.pos) =>
-          deltaScores += id -> (deltaScores(id) + 1.0)
+          deltaScores += id -> (deltaScores(id) + 0.2)
         case _ => ()
       }
     }
 
     // 2️⃣ Food reward
     foodConsumed.foreach { case (id, _) =>
-      deltaScores += id -> (deltaScores(id) + 2.0)
+      deltaScores += id -> (deltaScores(id) + 5.0)
     }
 
     // 3️⃣ Adjacency combat: assign rewards to winners
@@ -338,7 +342,7 @@ object Game {
         val penalty =
           moveResolutions.get(id) match {
             case Some(Resolution.Die) => -10.0   // collision death
-            case _ if deadByCombat.contains(id) => -2.0
+            case _ if deadByCombat.contains(id) => 0.0
             case _ => 0.0
           }
         deltaScores += id -> (deltaScores(id) + penalty)

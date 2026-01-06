@@ -8,6 +8,8 @@ import scalafx.scene.layout.VBox
 import scalafx.scene.layout.Priority
 import scalafx.geometry.Pos
 import scalafx.geometry.Insets
+import org.kordamp.ikonli.javafx.FontIcon
+import org.kordamp.ikonli.fontawesome5.FontAwesomeSolid
 
 class PlaybackControl(playbackViewModel: PlaybackViewModel) extends HBox {
   val playPauseButton = new Button {
@@ -38,9 +40,12 @@ class PlaybackControl(playbackViewModel: PlaybackViewModel) extends HBox {
     padding = Insets(4, 4, 4, 4)
   } 
 
-  playPauseButton.text <== playbackViewModel.playing.map { playing =>
-     if(!playing) "▶"
-     else        "⏸"
+  val playIcon = new FontIcon(FontAwesomeSolid.PLAY)
+  val pauseIcon = new FontIcon(FontAwesomeSolid.PAUSE)
+
+  playPauseButton.graphic <== playbackViewModel.playing.map { playing =>
+     if(!playing) playIcon
+     else        pauseIcon
   }
 
   playPauseButton.onAction = { _ =>

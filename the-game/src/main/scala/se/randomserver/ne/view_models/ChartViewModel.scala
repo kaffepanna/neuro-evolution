@@ -11,16 +11,20 @@ import scalafx.collections.ObservableHashMap
 import se.randomserver.ne.evolution.Evolution.SpeciesId
 import scalafx.beans.binding.Bindings
 
-class ChartViewModel(session: SessionViewModel) {
+class ChartViewModel(val session: SessionViewModel) {
   val seriesMap: ObservableHashMap[SpeciesId, JFXSeries[Number, Number]] = ObservableHashMap[SpeciesId, JFXSeries[Number, Number]]()
-    //.withDefault(speciesId => Series[Number, Number](s"Species: ${speciesId}", ObservableBuffer())) //(averageSeries, topSeries)
 
   val series: ObservableBuffer[JFXSeries[Number, Number]] = ObservableBuffer()
 
   seriesMap.onChange { (_, change) =>
     change match
-      case ObservableMap.Add(speciesId, s) => series.addOne(s)
+      case ObservableMap.Add(speciesId, s) => series += s
+      case ObservableMap.Remove(speciesId, s) => series -= s 
        
+  }
+
+  session.runId.onChange { (_, _,_) =>
+    seriesMap.clear()
   }
 
   session.speciesFitness.onChange { (_, change) =>
@@ -29,6 +33,10 @@ class ChartViewModel(session: SessionViewModel) {
         val serie = seriesMap.getOrElseUpdate(species, Series[Number, Number](s"$species", ObservableBuffer()))
         serie.data() += Data(generation, score)
       }
-
+      case ObservableMap.Remove(generation, _) => seriesMap.foreach { (seriesId, serie) =>
+        serie.data().removeIf(_.XValue() == generation)
+        if ( serie.data().isEmpty())
+          seriesMap.remove(seriesId)
+      }
   }
 }

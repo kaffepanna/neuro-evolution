@@ -34,19 +34,17 @@ object GameEvolution {
   val ROWS = 30
   val COLS = 30
 
-  final case class GameEvolutionEnv[F[_]](
+  final case class GameEvolutionEnv(
     teams: Int,
     gameIterations: Int,
     gamesPerGeneration: Int,
     rows: Int,
     cols: Int,
     visionRadius: Int,
-    gameStateReport: Queue[F, Vector[GameState]],
-    fitnessReport: Queue[F, Map[SpeciesId, Double]],
     evolutionEnv: EvolutionEnv[Double, Double]
   ) {
     export evolutionEnv.*
-    lazy val inputs: Int = (2* visionRadius  + 1)**2
+    lazy val inputs: Int = ((2* visionRadius  + 1)**2)
     lazy val outputs: Int = Game.Action.values.size
   }
 
@@ -54,7 +52,7 @@ object GameEvolution {
     evolutionState: EvolutionState[Double, Double]
   )
 
-  type HasGameEvolutionEnv[F[_]] = Ask[F, GameEvolutionEnv[F]]
+  type HasGameEvolutionEnv[F[_]] = Ask[F, GameEvolutionEnv]
   type HasGameEvolutionState[F[_]] = Stateful[F, GameEvolutionState]
 
   given [F[_]](using AP: Applicative[F], GEE: HasGameEvolutionEnv[F]): HasEvolutionEnv[F, Double, Double] = new Ask[F, EvolutionEnv[Double, Double]] {
@@ -70,37 +68,41 @@ object GameEvolution {
       GES.modify(gs => gs.copy(evolutionState = f(gs.evolutionState)))
   }
 
-  def getGameEnv[F[_]: HasGameEvolutionEnv]: F[GameEvolutionEnv[F]] = Ask[F, GameEvolutionEnv[F]].ask
+  type GameEvo[F[_]] = Monad[F] & HasGameEvolutionState[F] & HasGameEvolutionEnv[F] & StatsCallback[F] & HasGenePool[F]
 
-  def integrate[F[_]: Monad: Parallel](
+  def getGameEnv[F[_]: HasGameEvolutionEnv]: F[GameEvolutionEnv] = Ask[F, GameEvolutionEnv].ask
+
+  def integrate[F[_]: Monad: HasGameEvolutionEnv: Parallel](
     n: Int,
     agents: Map[GenomeId, (SpeciesId, CompiledNetwork[Double])],
     acc: Vector[GameState],
     activationStates: Map[GenomeId, ActivationState[Double]]
   ): F[Vector[GameState]] = n match {
     case 0 => Monad[F].pure(acc)
-    case nn => {
-      val state = acc.last
-      val intentsF = agents.map { case (id, (team, member)) =>
-        val inputs = Game.vision(state, id, valueOf[VisionRadius]).flatten.map {
-          case Cell.Empty => 0.0
-          case Cell.Individual(_, `team`) => 0.5
+    case nn => for {
+      env <- getGameEnv
+      state = acc.last
+      intents <- agents.map { case (id, (team, member)) =>
+        val vision = Game.vision(state, id, env.visionRadius)
+        val inputs = vision.flatten.map {
+          case Cell.Individual(_,`team`) => 0.5d
           case Cell.Individual(_, _) => -1.0
+          case Cell.Food => 1.0d
           case Cell.Obstacle => -0.5
-          case Cell.Food => 1.0
+          case _ => 0.0d
         }.zip(member.inputs.toVector.sorted).map(_.swap).toMap
+        
         val activationState = activationStates(id)
         val nextActivationState = Runner.stepNetwork(member, inputs, 1.0, activationState)
         val intent = member.outputs.toVector.sorted.map(nextActivationState.apply).zip(Game.Action.values).maxBy(_._1)
         Monad[F].pure(id -> (intent._2, nextActivationState))
-      }.toList.sequence.map(_.toMap)
-      intentsF >>= { intents => 
-        val nextGameState = Game.step(state, intents.map((k, v) => k -> v._1))
-        val stuck = (acc :+ nextGameState).reverse.take(5).map(a => a.individuals.values.map(_.score).sum).toSet.size == 1
-        if (stuck) (acc :+ nextGameState).pure
-        else integrate(nn - 1, agents, acc :+ nextGameState, intents.map((k, v) => k -> v._2))
-      }
-    }
+      }.toList.parSequence.map(_.toMap)
+      nextGameState = Game.step(state, intents.map((k, v) => k -> v._1))
+      stuck = (acc :+ nextGameState).reverse.take(5).map(a => a.individuals.values.map(_.score).sum).toSet.size == 1
+      res <- if (stuck) (acc :+ nextGameState).pure
+             else integrate(nn - 1, agents, acc :+ nextGameState, intents.map((k, v) => k -> v._2))
+      
+    } yield res
   }
 
   def gameStep[F[_]: Monad: Applicative: Parallel: HasGameEvolutionEnv](count: Int = 1, members: Vector[(Int, CompiledNetwork[Double])])(using RR: RandomRange[F, Double], R: Random[F]): F[(Vector[GameState], Map[GenomeId, Double])] = for {
@@ -114,7 +116,7 @@ object GameEvolution {
     
     initialIndividuals <- Monad[F].pure(teams.toVector.map { case id -> (teamId, member) => id -> teamId })
 
-    initialGameState = GameState.random(ROWS, COLS, initialIndividuals.toSet)
+    initialGameState = GameState.random(gameEnv.rows, gameEnv.cols, initialIndividuals.toSet)
     initailActivationStates = Map.empty[GenomeId, ActivationState[Double]].withDefault { i =>
       val (_, compiled) = teams(i)
       val maxNode = compiled.blocks.flatMap(_.nodes.map(_.id)).max
@@ -151,19 +153,23 @@ object GameEvolution {
     _ <- setState(state.copy(fitness = updatedFitness))
   } yield runs.map(_._1)
 
-  def step[F[_]: Monad: Parallel: HasGameEvolutionEnv: HasGameEvolutionState: HasGenePool](using R: Random[F], RR: RandomRange[F, Double]): F[Vector[GameState]] = for {
-    env <- getGameEnv
-    
-    runs <- evaluateFitness
-    _ <- env.gameStateReport.offer(runs.last)
-    _ <- adjustFitnessSharing[F, Double, Double]
-    _ <- getState.flatMap { state => 
-      val speciesFitnesses = state.species.map { species =>
+  def pushStats[F[_]: Monad: HasGameEvolutionState: StatsCallback](runs: Vector[Vector[GameState]]): F[Unit] = for {
+    state <- getState
+    scores = state.species.map { species =>
         val fitnessSum = species.members.map(state.fitness).foldLeft(0d)(_ + _)
         species.id -> fitnessSum / species.members.size
-      }
-      env.fitnessReport.offer(speciesFitnesses.toMap)
-    }
+    }.toMap
+    game = runs.maxBy(_.size)
+    stats = Stats(state.generation, game, scores)
+    _ <- StatsCallback[F].pushGeneration(stats)
+  } yield ()
+
+
+  def step[F[_]: Monad: Parallel: HasGameEvolutionEnv: HasGameEvolutionState: HasGenePool: StatsCallback](using R: Random[F], RR: RandomRange[F, Double]): F[Vector[GameState]] = for {
+    env <- getGameEnv
+    runs <- evaluateFitness
+    _ <- adjustFitnessSharing[F, Double, Double]
+    _ <- pushStats(runs)
     _ <- debug[F, Double, Double]
     _ <- cullSpecies[F, Double, Double]
     offspringPlan <- allocateOffspringPerSpecies[F, Double,Double]
@@ -180,7 +186,7 @@ object GameEvolution {
     })
   } yield runs.last
 
-  def evolve[F[_]: Monad: Random: Parallel: HasGameEvolutionEnv: HasGameEvolutionState: HasGenePool](using RandomRange[F, Double]): F[Seq[GameState]] = for {
+  def evolve[F[_]: Monad: Random: Parallel: HasGameEvolutionEnv: HasGameEvolutionState: HasGenePool: StatsCallback](using RandomRange[F, Double]): F[Seq[GameState]] = for {
     env <- getEnv
     genomes <- genome(valueOf[Inputs], valueOf[Outputs]).replicateA(env.popsize)
     initialPop <- genomes.map { genome =>
@@ -190,61 +196,25 @@ object GameEvolution {
     states <- List.fill(env.generations)(()).traverse { _ => step[F] }
   } yield states.last
 
-  def run(queue: Queue[IO, Vector[GameState]], speciesFitnessQueue: Queue[IO, Map[SpeciesId, Double]]): IO[Unit] = {
-    def transferFn(x: Double) = 1.0d / (1.0d + Math.exp(-x))
-
-    given [F[_]: Monad, B]: Conversion[Ref[F, B], Stateful[F, B]] = (ref: Ref[F, B]) => new Stateful[F, B] {
-      override def monad: Monad[F] = Monad[F]
-      override def get: F[B] = ref.get
-      override def set(s: B): F[Unit] = ref.set(s)
-      override def modify(f: B => B): F[Unit] = ref.update(f)
+  def run(env: GameEvolutionEnv)(using StatsCallback[IO], RandomRange[IO, Double], Random[IO]): IO[Unit] = {
+    
+    def refToStateful[B](ref: Ref[IO, B]) = new Stateful[IO, B] {
+      override def monad: Monad[IO] = Monad[IO]
+      override def get: IO[B] = ref.get
+      override def set(s: B): IO[Unit] = ref.set(s)
+      override def modify(f: B => B): IO[Unit] = ref.update(f)
     }
 
     for {
-      rnd <- Random.scalaUtilRandom[IO]
-      given Random[IO] = rnd
-      given RandomRange[IO, Double] = RandomRange(
-        (-1.0, 1.0),
-        (-0.05, 0.05),
-        (-1.0, 1.0)
-      )
-      env = GameEvolutionEnv[IO](
-          teams = 1,
-          gameIterations = 200,
-          gamesPerGeneration = 20,
-          rows = 30,
-          cols = 30,
-          visionRadius = 3,
-          gameStateReport = queue,
-          fitnessReport = speciesFitnessQueue,
-          evolutionEnv = EvolutionEnv[Double, Double](
-            data = List.empty,
-            transfer = transferFn,
-            fitnessFn = (_, _) => 0,
-            popsize = 30,
-            generations = 1000,
-            defaultBias = 1.0,
-            weightChance = 0.15,
-            resetChance = 0.00,
-            connectionChance = 0.25,
-            nodeChance = 0.10,
-            eliteFraction = 0.10,
-            minScore = None,
-            recurrentSteps = 1,
-            speciationConfig = SpeciationConfig(
-              20.0, 15.0, 0.1, 0.5
-            )
-        )
-      )
-
       gameEvolutionStateRef <- Ref.of[IO, GameEvolutionState](GameEvolutionState(EvolutionState[Double, Double]()))
       genePoolStateRef <- Ref.of[IO, GenePool](GenePool(0, Map.empty))
+      _ <- {
+        given HasGameEvolutionEnv[IO] = Ask.const[IO, GameEvolutionEnv](env)
+        given HasGameEvolutionState[IO] = refToStateful[GameEvolutionState](gameEvolutionStateRef)
+        given HasGenePool[IO] = refToStateful[GenePool](genePoolStateRef)
 
-      given HasGameEvolutionEnv[IO] = Ask.const[IO, GameEvolutionEnv[IO]](env)
-      given HasGameEvolutionState[IO] = given_Conversion_Ref_Stateful[IO, GameEvolutionState](gameEvolutionStateRef)//gameEvolutionStateRef
-      given HasGenePool[IO] = given_Conversion_Ref_Stateful[IO, GenePool](genePoolStateRef)
-
-      _ <- evolve[IO]
+        evolve[IO]
+      }
       //result <- step.run(env).run(evolutionState).run(genePoolState)
     } yield ()
   } 

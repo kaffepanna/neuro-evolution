@@ -17,7 +17,7 @@ class ScoreboardViewModel(session: SessionViewModel) {
     case Some(state) => scoreRows.setAll(
       state.individuals.map {
         case _ -> IndividualState(id, team, _, score, alive, _) => ScoreRow(id, team, score, alive)
-      }.toSeq: _*
+      }.toSeq*
     )
     case None =>
       scoreRows.clear()

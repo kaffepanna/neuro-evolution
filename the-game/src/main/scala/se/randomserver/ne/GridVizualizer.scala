@@ -1,4 +1,4 @@
-package se.randomserver.ne.ui
+package se.randomserver.ne
 
 
 import scalafx.application.JFXApp3
@@ -51,35 +51,63 @@ import se.randomserver.ne.view_models.ScoreboardViewModel
 import scalafx.geometry.Pos
 import se.randomserver.ne.view_models.GenerationsViewModel
 import se.randomserver.ne.view_models.ChartViewModel
+import cats.effect.std.Dispatcher
+import se.randomserver.ne.ui.ChartPane
+import se.randomserver.ne.ui.PlaybackControl
+import se.randomserver.ne.ui.GenerationCombo
+import se.randomserver.ne.ui.Scoreboard
+import scalafx.stage.WindowEvent
+import scalafx.scene.control.ToolBar
+import scalafx.scene.control.Button
+import org.kordamp.ikonli.javafx.FontIcon
+import org.kordamp.ikonli.fontawesome5.FontAwesomeSolid
 
-object GridVisualizer extends JFXApp3 {
+class GridVisualizer(dispatcher: Dispatcher[IO], runtime: BackgroundRuntime) extends JFXApp3 {
+  
+  def shutdown(): Unit =
+    dispatcher.unsafeRunAndForget {
+      runtime.shutdown()
+    }
 
+   
   override def start(): Unit = {
 
-    val sessionViewModel = new SessionViewModel()
+    val sessionViewModel = new SessionViewModel(runtime)
     val gridViewModel = new GridViewModel(sessionViewModel)
     val playbackViewModel = new PlaybackViewModel(sessionViewModel)
     val scoreboardViewModel = new ScoreboardViewModel(sessionViewModel)
-    val generationsViewModel = new GenerationsViewModel(sessionViewModel)
     val chartViewModel = new ChartViewModel(session = sessionViewModel)
-
+    
     val chart = new ChartPane(chartViewModel) 
 
-    val playbackConrol = new PlaybackControl(playbackViewModel)
-
-    val bottomPane = new HBox {
-      children += GenerationCombo(generationsViewModel)
-      children += playbackConrol
-      HBox.setHgrow(playbackConrol, Priority.Always)
-      HBox.setMargin(playbackConrol, Insets(5, 5, 5, 5))
-      alignment = Pos.Center
+    val toolbar = new ToolBar {
+      val startButton = new Button {
+        graphic = new FontIcon(FontAwesomeSolid.FILE)
+        onAction = { _ =>
+          sessionViewModel.start()
+        }
+        disable <== sessionViewModel.running
+      }
+      val stopButton = new Button {
+        graphic = new FontIcon(FontAwesomeSolid.STOP)
+        onAction = { _ =>
+          sessionViewModel.stop()
+        }
+        disable <== sessionViewModel.running.not()
+      }
+    
+      content = List(
+        startButton, stopButton
+      )
     }
 
     val borderPane = new BorderPane {
-      top = chart
+      top = new VBox {
+        children = List(toolbar, chart)
+      }
       center = GridPane(gridViewModel)
       right = Scoreboard(scoreboardViewModel)
-      bottom = bottomPane
+      bottom = PlaybackControl(playbackViewModel)
       maxHeight = Double.MaxValue
       maxWidth = Double.MaxValue
     }
@@ -88,14 +116,18 @@ object GridVisualizer extends JFXApp3 {
       children += borderPane
     }
 
-    StackPane.setAlignment(borderPane, Pos.Center)
+    StackPane.setAlignment(borderPane, Pos.Center) 
 
-    sessionViewModel.start()
+    //sessionViewModel.start()
 
     stage = new JFXApp3.PrimaryStage {
       title = "NEAT Game"
       scene = new Scene {
         root = container
+      }
+      onCloseRequest = (e: WindowEvent) => {
+        // IMPORTANT: do NOT consume the event
+        shutdown()
       }
     }
   }
