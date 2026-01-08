@@ -95,7 +95,7 @@ class GridVisualizer(dispatcher: Dispatcher[IO], runtime: BackgroundRuntime) ext
         }
         disable <== sessionViewModel.running.not()
       }
-    
+
       content = List(
         startButton, stopButton
       )

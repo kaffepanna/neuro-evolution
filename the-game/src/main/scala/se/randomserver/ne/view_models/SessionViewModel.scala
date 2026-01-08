@@ -47,28 +47,28 @@ class SessionViewModel(runtime: BackgroundRuntime) {
                               
   val gameEvolutionEnv = ObjectProperty[GameEvolutionEnv](
     GameEvolutionEnv(
-          teams = 2,
+          teams = 1,
           gameIterations = 200,
-          gamesPerGeneration = 10,
-          rows = 20,
-          cols = 30,
+          gamesPerGeneration =10,
+          rows = 40,
+          cols = 40,
           visionRadius = 2,
           evolutionEnv = EvolutionEnv[Double, Double](
             data = List.empty,
             transfer = transferFn,
             fitnessFn = (_, _) => 0,
-            popsize = 35,
+            popsize = 40,
             generations = 1000,
             defaultBias = 1.0,
             weightChance = 0.20,
             resetChance = 0.00,
-            connectionChance = 0.00,
-            nodeChance = 0.05,
-            eliteFraction = 0.25,
+            connectionChance = 0.10,
+            nodeChance = 0.10,
+            eliteFraction = 0.10,
             minScore = None,
             recurrentSteps = 1,
             speciationConfig = SpeciationConfig(
-              30.0, 25.0, 0.8, 1.5
+              30.0, 25.0, 0.2, 1.0
             )
         )
       )

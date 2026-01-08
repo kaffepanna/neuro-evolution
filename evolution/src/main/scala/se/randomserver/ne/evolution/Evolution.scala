@@ -224,7 +224,8 @@ object Evolution {
         val count = offspringCounts.getOrElse(species.id, 0)
         val eliteCount = math.max(1, (species.members.size * env.eliteFraction).ceil.toInt)
         val elites = sortedMembers.take(eliteCount).map(id => id -> state.population(id))
-        val breeders = sortedMembers.take(math.max(2, sortedMembers.size / 2)).map(id => id -> state.population(id))
+        //val breeders = sortedMembers.take(math.max(2, sortedMembers.size / 2)).map(id => id -> state.population(id))
+        val breeders = sortedMembers.take(eliteCount).map(id => id -> state.population(id))
         if (count <= 0)
           Vector.empty
         else {

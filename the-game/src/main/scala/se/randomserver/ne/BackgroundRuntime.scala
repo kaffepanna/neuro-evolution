@@ -5,7 +5,7 @@ import cats.effect.std.Dispatcher
 import cats.effect.IO
 import cats.effect.FiberIO
 
-class BackgroundRuntime(dispatcher: Dispatcher[IO]) {
+class BackgroundRuntime(dispatcher: Dispatcher[IO], computeThreads: Int) {
   private var fiber: Option[FiberIO[Unit]] = None
 
   def start(program: IO[Unit]): Unit = dispatcher.unsafeRunAndForget {
