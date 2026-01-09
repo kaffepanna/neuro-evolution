@@ -25,28 +25,28 @@ object Utils {
     def rows: Int = grid.size
     def cols: Int = grid.headOption.map(_.size).getOrElse(0)
 
+    def allPositions = for {
+      r <- 0 until rows
+      c <- 0 until cols
+    } yield (r, c)
+
     def occupied(r: Int, c: Int): Boolean =
-      if (r < 0 || rows <= r || c < 0 || cols <= c) false
-      else if (grid(r)(c) == Cell.Individual) false
-      else if (grid(r)(c) == Cell.Obstacle) false
-      else if (grid(r)(c) == Cell.Food) false
+      if (r < 0 || rows <= r || c < 0 || cols <= c) true
+      else if (grid(r)(c) == Cell.Individual) true
+      else if (grid(r)(c) == Cell.Obstacle) true
+      else if (grid(r)(c) == Cell.Food) true
       else
         List((r - 1, c), (r + 1, c), (r, c - 1), (r, c + 1))
           .filter { case (i, j) => i >= 0 && i < rows && j >= 0 && j < cols }
           .map { case (rr, cc) => grid(rr)(cc) }
-          .forall { cell => 
+          .exists { cell => 
             cell match
-              case Cell.Individual(_, _) => false
-              case _ => true
+              case Cell.Individual(_, _) => true
+              case _ => false
           }
 
     def place(id: Game.Id, teamId: Game.TeamId)(using rand: Random): Vector[Vector[Cell]] = {
-      val freePos = for {
-        r <- 0 until rows
-        c <- 0 until cols
-        if !occupied(r, c)
-        } yield (r, c)
-      
+      val freePos = allPositions.filterNot { case (r, c) => occupied(r, c) }
       if (freePos.isEmpty) throw new IllegalStateException("No free positions to place on grid")
 
       val (r,c) = freePos(rand.between(0, freePos.size))

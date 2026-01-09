@@ -58,13 +58,15 @@ object Game {
       val indStates = for {
         r <- 0 until grid.rows
         c <- 0 until grid.cols
-        cell = grid(r)(c)
+        cell = grid2(r)(c)
       } yield {
         cell match
           case Cell.Individual(id, teamId) =>
             Some(id -> IndividualState(id, teamId, Pose((r, c), Heading.values(rnd.between(0, Heading.values.size)))))
           case _ => None
       }
+
+      println(s"Inds found in grid ${indStates.flatten.toMap.keySet} inds supposedly: ${inds}")
 
       GameState(
         grid2, indStates.flatten.toMap
@@ -76,7 +78,11 @@ object Game {
       id: Game.Id,
       radius: Int
   ): Vector[Vector[Game.Cell]] = {
-    val ind = state.individuals(id)
+    val indO = state.individuals.get(id)
+    if (indO.isEmpty) {
+      println(s"Could not find ind $id in ${state.individuals.keySet}") 
+    }
+    val ind = indO.get
     val pose @ Pose((r0, c0), heading) = ind.pose
     val size = 2 * radius + 1
 

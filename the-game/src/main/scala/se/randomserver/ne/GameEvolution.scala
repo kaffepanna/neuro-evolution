@@ -99,7 +99,7 @@ object GameEvolution {
         val nextActivationState = Runner.stepNetwork(member, inputs, 1.0, activationState)
         val intent = member.outputs.toVector.sorted.map(nextActivationState.apply).zip(Game.Action.values).maxBy(_._1)
         Monad[F].pure(id -> (intent._2, nextActivationState))
-      }.toList.parSequenceN(7).map(_.toMap)
+      }.toList.sequence.map(_.toMap)
       nextGameState = Game.step(state, intents.map((k, v) => k -> v._1))
       stuck = (acc :+ nextGameState).reverse.take(5).map(a => a.individuals.values.map(_.score).sum).toSet.size == 1
       res <- if (stuck) (acc :+ nextGameState).pure
@@ -144,7 +144,7 @@ object GameEvolution {
      
     runs <- (1 to env.gamesPerGeneration).inclusive
         .toVector
-        .map(n => gameStep(n, members)).parSequenceN(2)
+        .map(n => gameStep(n, members)).sequence
 
     updatedFitness = runs.map(_._2).foldLeft(Map.empty[Int, (Double, Int)]) { (acc, map) =>
       map.foldLeft(acc) { case (innerAcc, (k, v)) =>
