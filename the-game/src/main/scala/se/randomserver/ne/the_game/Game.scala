@@ -1,7 +1,6 @@
 package se.randomserver.ne.the_game
 
 import scala.util.Random
-import se.randomserver.ne.ui.GridEditorApp
 import java.nio.file.Path
 import java.nio.file.Paths
 
@@ -47,37 +46,28 @@ object Game {
   )
 
   object GameState {
+    import Utils.{*, given}
     
-    def random(rows: Int, cols: Int, inds: Set[(Id, TeamId)]): GameState =
-      val r = new Random()
-      val walled = Vector.fill(rows, cols)(Cell.Empty)
-      //val walled = GridEditorApp.loadGrid(Paths.get("/home/patrik/sources/neuro-evolution/30x30.grid")).right.get.map { row =>
-      //  row.map {
-      //    case 1 => Cell.Obstacle
-      //    case _ => Cell.Empty
-      //  }
-      //}
-      val obstacles = walled.zipWithIndex.flatMap { case (rows, r) => rows.zipWithIndex.collect { case (Cell.Obstacle, c) => (r, c)} }.toSet
-      val foods = List.fill(Math.sqrt(rows.toDouble*cols.toDouble).toInt)(2).zipWithIndex.map(_.swap).toSet
-      val foodPlaced = RandomPlacer.placeIdsWithObstacles(foods, rows,cols, obstacles).get.values.toSet
+    def random(grid: Vector[Vector[Cell]], inds: Set[(Id, TeamId)]): GameState =
+      given rnd: Random = new Random()
 
-      val placements: Map[Id, Pos] = RandomPlacer.placeIdsWithObstacles(inds, rows, cols, obstacles ++ foods) match
-        case Some(value) => value
-        case None => throw IllegalStateException("cannot place individuals")
-      
-      val grid = obstacles.foldLeft(Vector.fill(rows, cols)(Cell.Empty)) { (g, pos) =>
-        g.updated(pos._1, g(pos._1).updated(pos._2, Cell.Obstacle))
+      val grid2 = inds.foldLeft(grid) { case (g, (id, teamId)) =>
+        g.place(id, teamId)
       }
-      val grid2 = foodPlaced.foldLeft(grid) { (g, pos) =>
-        g.updated(pos._1, g(pos._1).updated(pos._2, Cell.Food))
+
+      val indStates = for {
+        r <- 0 until grid.rows
+        c <- 0 until grid.cols
+        cell = grid(r)(c)
+      } yield {
+        cell match
+          case Cell.Individual(id, teamId) =>
+            Some(id -> IndividualState(id, teamId, Pose((r, c), Heading.values(rnd.between(0, Heading.values.size)))))
+          case _ => None
       }
 
       GameState(
-        grid2,
-        placements.map { case (id, pos) => 
-          val team = inds.find(_._1 == id).get._2
-          id -> IndividualState(id, team, Pose(pos, Heading.values(r.between(0, Heading.values.size - 1))))
-        }
+        grid2, indStates.flatten.toMap
       )
   }
 
@@ -197,7 +187,7 @@ object Game {
 
   def resolveSameTeamCollision(
     state: GameState,
-    pose: Pos,
+    pose: Pose,
     ids: Iterable[Id]
   ): Map[Id, Resolution] = {
 
@@ -216,13 +206,13 @@ object Game {
     intents: Map[Id, Pose]
   ): Map[Id, Resolution] = {
 
-    val grouped = intents.groupMap(_._2.pos)(_._1)
+    val grouped = intents.groupMap(_._2)(_._1)
 
-    grouped.flatMap { case (pos, ids) =>
+    grouped.flatMap { case (pose, ids) =>
 
       val teams = ids.map(id => state.individuals(id).team).toSet
 
-      cellAt(state.grid, pos) match {
+      cellAt(state.grid, pose.pos) match {
 
         // ⛔ outside or obstacle → nobody moves
         case None | Some(Cell.Obstacle) =>
@@ -230,11 +220,11 @@ object Game {
 
         // ⚔️ multiple teams arrive at same cell → all die
         case Some(Cell.Individual(presentId, presentTeamId)) =>
-          resolveSameTeamCollision(state, pos, ids.toSet + presentId)
+          resolveSameTeamCollision(state, pose, ids.toSet + presentId)
         case _ if teams.size > 1 =>
           ids.map(id => id -> Resolution.Die)
         case _ =>
-          resolveSameTeamCollision(state, pos, ids)
+          resolveSameTeamCollision(state, pose, ids)
       }
     }
   }

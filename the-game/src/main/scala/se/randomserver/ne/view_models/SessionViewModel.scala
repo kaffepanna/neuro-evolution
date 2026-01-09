@@ -29,6 +29,7 @@ import se.randomserver.ne.genome.RandomRangeConfig
 import se.randomserver.ne.genome.RandomRange
 import scalafx.beans.property.BooleanProperty
 import se.randomserver.ne.ui.SessionDialog
+import se.randomserver.ne.the_game.Game
 
 class SessionViewModel(runtime: BackgroundRuntime) {
   val generations = new ObservableHashMap[Long, Vector[GameState]]()
@@ -51,8 +52,7 @@ class SessionViewModel(runtime: BackgroundRuntime) {
           teams = 1,
           gameIterations = 200,
           gamesPerGeneration =10,
-          rows = 40,
-          cols = 40,
+          grid = Vector.fill(30, 30)(Game.Cell.Empty),
           visionRadius = 2,
           evolutionEnv = EvolutionEnv[Double, Double](
             data = List.empty,

@@ -40,14 +40,15 @@ object GameEvolution {
     teams: Int,
     gameIterations: Int,
     gamesPerGeneration: Int,
-    rows: Int,
-    cols: Int,
     visionRadius: Int,
+    grid: Vector[Vector[Game.Cell]],
     evolutionEnv: EvolutionEnv[Double, Double]
   ) {
     export evolutionEnv.*
     lazy val inputs: Int = ((2* visionRadius  + 1)**2)
     lazy val outputs: Int = Game.Action.values.size
+    lazy val rows: Int = grid.size
+    lazy val cols: Int = grid.headOption.map(_.size).getOrElse(0)
   }
 
   final case class GameEvolutionState(
@@ -118,7 +119,7 @@ object GameEvolution {
     
     initialIndividuals <- Monad[F].pure(teams.toVector.map { case id -> (teamId, member) => id -> teamId })
 
-    initialGameState = GameState.random(gameEnv.rows, gameEnv.cols, initialIndividuals.toSet)
+    initialGameState = GameState.random(gameEnv.grid, initialIndividuals.toSet)
     initailActivationStates = Map.empty[GenomeId, ActivationState[Double]].withDefault { i =>
       val (_, compiled) = teams(i)
       val maxNode = compiled.blocks.flatMap(_.nodes.map(_.id)).max

@@ -43,9 +43,9 @@ import scalafx.collections.ObservableMap
 import scalafx.beans.property.LongProperty
 import scalafx.collections.ObservableHashMap
 import se.randomserver.ne.GameEvolution
-import se.randomserver.ne.ui.GridPane
+import se.randomserver.ne.ui.GameReplay
 import se.randomserver.ne.view_models.SessionViewModel
-import se.randomserver.ne.view_models.GridViewModel
+import se.randomserver.ne.view_models.GameReplayViewModel
 import se.randomserver.ne.view_models.PlaybackViewModel
 import se.randomserver.ne.view_models.ScoreboardViewModel
 import scalafx.geometry.Pos
@@ -61,6 +61,7 @@ import scalafx.scene.control.ToolBar
 import scalafx.scene.control.Button
 import org.kordamp.ikonli.javafx.FontIcon
 import org.kordamp.ikonli.fontawesome5.FontAwesomeSolid
+import se.randomserver.ne.the_game.Game
 
 class GridVisualizer(dispatcher: Dispatcher[IO], runtime: BackgroundRuntime) extends JFXApp3 {
   
@@ -73,7 +74,7 @@ class GridVisualizer(dispatcher: Dispatcher[IO], runtime: BackgroundRuntime) ext
   override def start(): Unit = {
 
     val sessionViewModel = new SessionViewModel(runtime)
-    val gridViewModel = new GridViewModel(sessionViewModel)
+    val gameViewModel = new GameReplayViewModel(sessionViewModel)
     val playbackViewModel = new PlaybackViewModel(sessionViewModel)
     val scoreboardViewModel = new ScoreboardViewModel(sessionViewModel)
     val chartViewModel = new ChartViewModel(session = sessionViewModel)
@@ -105,7 +106,7 @@ class GridVisualizer(dispatcher: Dispatcher[IO], runtime: BackgroundRuntime) ext
       top = new VBox {
         children = List(toolbar, chart)
       }
-      center = GridPane(gridViewModel)
+      center = new GameReplay(gameViewModel)
       right = Scoreboard(scoreboardViewModel)
       bottom = PlaybackControl(playbackViewModel)
       maxHeight = Double.MaxValue
