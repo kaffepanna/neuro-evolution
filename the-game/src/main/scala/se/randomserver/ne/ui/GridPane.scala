@@ -7,6 +7,7 @@ import scalafx.scene.paint.Color
 import se.randomserver.ne.the_game.Game
 import se.randomserver.ne.view_models.GridViewModel
 import se.randomserver.ne.ui.ScalaFxOps.color
+import se.randomserver.ne.the_game.Game.Heading
 
 class GridPane(gridViewModel: GridViewModel) extends Pane {
   val canvas = new Canvas()
@@ -75,6 +76,20 @@ class GridPane(gridViewModel: GridViewModel) extends Pane {
 
         gc.fill = ind.team.color
         gc.fillRect(x+2, y+2, cellSize-4, cellSize-4) // margin inside cell
+        gc.stroke = Color.Black
+
+        val cX = x + cellSize/2
+        val cY = y + cellSize/2
+        ind.pose.heading match
+          case Heading.North =>
+            gc.strokeLine(cX, cY, cX, cY - cellSize/2)
+          case Heading.East =>
+            gc.strokeLine(cX, cY, cX + cellSize/2, cY)
+          case Heading.West =>
+            gc.strokeLine(cX, cY, cX - cellSize/2, cY)
+          case Heading.South =>
+            gc.strokeLine(cX, cY, cX, cY + cellSize/2)
+        
       }
     }
   }

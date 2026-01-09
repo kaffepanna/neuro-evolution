@@ -197,7 +197,7 @@ object Game {
 
   def resolveSameTeamCollision(
     state: GameState,
-    pose: Pose,
+    pose: Pos,
     ids: Iterable[Id]
   ): Map[Id, Resolution] = {
 
@@ -216,25 +216,25 @@ object Game {
     intents: Map[Id, Pose]
   ): Map[Id, Resolution] = {
 
-    val grouped = intents.groupMap(_._2)(_._1)
+    val grouped = intents.groupMap(_._2.pos)(_._1)
 
-    grouped.flatMap { case (pose, ids) =>
+    grouped.flatMap { case (pos, ids) =>
 
       val teams = ids.map(id => state.individuals(id).team).toSet
 
-      cellAt(state.grid, pose.pos) match {
+      cellAt(state.grid, pos) match {
 
         // ⛔ outside or obstacle → nobody moves
         case None | Some(Cell.Obstacle) =>
-          ids.map(id => id -> Resolution.Stay(pose))
+          ids.map(id => id -> Resolution.Stay(state.individuals(id).pose))
 
         // ⚔️ multiple teams arrive at same cell → all die
         case Some(Cell.Individual(presentId, presentTeamId)) =>
-          resolveSameTeamCollision(state, pose, ids.toSet + presentId)
+          resolveSameTeamCollision(state, pos, ids.toSet + presentId)
         case _ if teams.size > 1 =>
           ids.map(id => id -> Resolution.Die)
         case _ =>
-          resolveSameTeamCollision(state, pose, ids)
+          resolveSameTeamCollision(state, pos, ids)
       }
     }
   }

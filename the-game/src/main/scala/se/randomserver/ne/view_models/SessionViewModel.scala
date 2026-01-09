@@ -28,6 +28,7 @@ import se.randomserver.ne.genome.SpeciationConfig
 import se.randomserver.ne.genome.RandomRangeConfig
 import se.randomserver.ne.genome.RandomRange
 import scalafx.beans.property.BooleanProperty
+import se.randomserver.ne.ui.SessionDialog
 
 class SessionViewModel(runtime: BackgroundRuntime) {
   val generations = new ObservableHashMap[Long, Vector[GameState]]()
@@ -121,12 +122,16 @@ class SessionViewModel(runtime: BackgroundRuntime) {
 
   def start() = {
     if (!running())
-      runId.value += 1
-      generations.clear()
-      speciesFitness.clear()
-      currentGameStateIndex.setValue(-1)
-      running() = true
-      runtime.start(traceIO)
+      new SessionDialog(gameEvolutionEnv.value).showAndWait() match
+        case Some(value: GameEvolutionEnv) =>
+          gameEvolutionEnv.value = value
+          runId.value += 1
+          generations.clear()
+          speciesFitness.clear()
+          currentGameStateIndex.setValue(-1)
+          running() = true
+          runtime.start(traceIO)
+        case _ => ()
   }
 
   def stop() = {

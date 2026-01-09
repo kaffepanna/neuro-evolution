@@ -82,6 +82,11 @@ lazy val example = (project in file("./example"))
 lazy val `the-game` = (project in file("./the-game"))
   .settings(
     name := "neuro-evolution-the-game",
+    Compile / mainClass := Some("se.randomserver.ne.App"),
+    run / fork := true,
+    run / javaOptions ++= Seq(
+      "-Xmx2G"
+    ),
     Compile / scalacOptions ++= Seq(
       "-Ykind-projector:underscores"
     ),

@@ -68,17 +68,19 @@ class ChartPane(viewModel: ChartViewModel) extends StackPane {
   }
 
   def overlayLine(line: Line, value: Number) =
-    if (value != null && value.intValue >= 0) {
-      val x = axisXToOverlay(genAxis, value)
-      if (!x.isNaN) {
-        line.startX = x
-        line.endX   = x
-        line.startY = axisYToOverlay(fitAxis, fitAxis.lowerBound())
-        line.endY   = axisYToOverlay(fitAxis, fitAxis.upperBound())
-        line.visible = true
+    Platform.runLater {
+      if (value != null && value.intValue >= 0) {
+        val x = axisXToOverlay(genAxis, value)
+        if (!x.isNaN) {
+          line.startX = x
+          line.endX   = x
+          line.startY = axisYToOverlay(fitAxis, fitAxis.lowerBound())
+          line.endY   = axisYToOverlay(fitAxis, fitAxis.upperBound())
+          line.visible = true
+        }
+      } else {
+        line.visible = false
       }
-    } else {
-      line.visible = false
     }
 
   def updateCurrentGenerationFromX(mouseX: Double): Unit = {
