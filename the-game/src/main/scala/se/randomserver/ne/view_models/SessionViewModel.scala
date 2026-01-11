@@ -37,7 +37,7 @@ class SessionViewModel(runtime: BackgroundRuntime) {
   val currentGenerationId = LongProperty(-1)
   val currentGameStateIndex = IntegerProperty(-1)
   val ranges = ObjectProperty[RandomRangeConfig](RandomRangeConfig(
-    (-2, 2), (-0.2, 0.2), (-4, 4)
+    (-1, 1), (-5.0, 5.0), (-8, 8)
   ))
 
   //def transferFn(x: Double) = 1.0d / (1.0d + Math.exp(-x))
@@ -46,12 +46,12 @@ class SessionViewModel(runtime: BackgroundRuntime) {
     val expPos = Math.exp(x)
     (expPos - expNeg) / (expPos + expNeg)
                               
-                              
   val gameEvolutionEnv = ObjectProperty[GameEvolutionEnv](
     GameEvolutionEnv(
           teams = 1,
           gameIterations = 200,
           gamesPerGeneration =10,
+          initialHidden = 60,
           grid = Vector.fill(30, 30)(Game.Cell.Empty),
           visionRadius = 2,
           evolutionEnv = EvolutionEnv[Double, Double](

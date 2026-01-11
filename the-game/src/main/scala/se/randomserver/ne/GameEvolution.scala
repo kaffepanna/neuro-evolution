@@ -11,6 +11,7 @@ import se.randomserver.ne.the_game.Game.GameState
 import se.randomserver.ne.genome.GenePool.{*, given}
 import se.randomserver.ne.genome.GenePool
 import se.randomserver.ne.evaluator.{Compiler, Runner}
+import se.randomserver.ne.evaluator.Runner.{*, given}
 import se.randomserver.ne.the_game.Game.Cell
 import se.randomserver.ne.the_game.Game.IndividualState
 import cats.effect.IO
@@ -28,20 +29,13 @@ import spire.implicits.*
 import se.randomserver.ne.genome.HasGenePool
 
 object GameEvolution {
-  import scala.compiletime.ops.int.*
-  type VisionRadius = 2
-  type VisionSqrt = VisionRadius * 2 + 1
-  type Inputs = VisionSqrt * VisionSqrt
-  type Outputs = 4
-  val ROWS = 30
-  val COLS = 30
-
   final case class GameEvolutionEnv(
     teams: Int,
     gameIterations: Int,
     gamesPerGeneration: Int,
     visionRadius: Int,
     grid: Vector[Vector[Game.Cell]],
+    initialHidden: Int,
     evolutionEnv: EvolutionEnv[Double, Double]
   ) {
     export evolutionEnv.*
@@ -99,7 +93,7 @@ object GameEvolution {
         val nextActivationState = Runner.stepNetwork(member, inputs, 1.0, activationState)
         val intent = member.outputs.toVector.sorted.map(nextActivationState.apply).zip(Game.Action.values).maxBy(_._1)
         Monad[F].pure(id -> (intent._2, nextActivationState))
-      }.toList.sequence.map(_.toMap)
+      }.toList.parSequenceN(8).map(_.toMap)
       nextGameState = Game.step(state, intents.map((k, v) => k -> v._1))
       stuck = (acc :+ nextGameState).reverse.take(5).map(a => a.individuals.values.map(_.score).sum).toSet.size == 1
       res <- if (stuck) (acc :+ nextGameState).pure
@@ -141,10 +135,9 @@ object GameEvolution {
           id -> compiled
     }.toVector
     
-     
     runs <- (1 to env.gamesPerGeneration).inclusive
         .toVector
-        .map(n => gameStep(n, members)).sequence
+        .map(n => gameStep(n, members)).parSequenceN(2)
 
     updatedFitness = runs.map(_._2).foldLeft(Map.empty[Int, (Double, Int)]) { (acc, map) =>
       map.foldLeft(acc) { case (innerAcc, (k, v)) =>
@@ -190,8 +183,9 @@ object GameEvolution {
   } yield runs.last
 
   def evolve[F[_]: Monad: Random: Parallel: HasGameEvolutionEnv: HasGameEvolutionState: HasGenePool: StatsCallback](using RandomRange[F, Double], GenConcurrent[F, Throwable]): F[Seq[GameState]] = for {
-    env <- getEnv
-    genomes <- genome(valueOf[Inputs], valueOf[Outputs]).replicateA(env.popsize)
+    env <- getGameEnv
+
+    genomes <- genome(env.inputs, env.outputs, env.initialHidden).replicateA(env.popsize)
     initialPop <- genomes.map { genome =>
         nextGenomeId >>= (id => (id -> genome).pure)
     }.sequence

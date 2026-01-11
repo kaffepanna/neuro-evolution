@@ -51,25 +51,14 @@ object Game {
     def random(grid: Vector[Vector[Cell]], inds: Set[(Id, TeamId)]): GameState =
       given rnd: Random = new Random()
 
-      val grid2 = inds.foldLeft(grid) { case (g, (id, teamId)) =>
-        g.place(id, teamId)
+      val (indStates, grid2) = inds.foldLeft(Map.empty[Int, IndividualState], grid) { case ((is, g), (id, teamId)) =>
+        val (pos, gg) = g.place(id, teamId)
+        val ind = IndividualState(id, teamId, Pose(pos, Heading.values(rnd.between(0, Heading.values.size))))
+        is.updated(id, ind) -> gg
       }
-
-      val indStates = for {
-        r <- 0 until grid.rows
-        c <- 0 until grid.cols
-        cell = grid2(r)(c)
-      } yield {
-        cell match
-          case Cell.Individual(id, teamId) =>
-            Some(id -> IndividualState(id, teamId, Pose((r, c), Heading.values(rnd.between(0, Heading.values.size)))))
-          case _ => None
-      }
-
-      println(s"Inds found in grid ${indStates.flatten.toMap.keySet} inds supposedly: ${inds}")
 
       GameState(
-        grid2, indStates.flatten.toMap
+        grid2, indStates
       )
   }
 
@@ -193,13 +182,13 @@ object Game {
 
   def resolveSameTeamCollision(
     state: GameState,
-    pose: Pose,
-    ids: Iterable[Id]
+    pos: Pos,
+    idPoses: Iterable[(Id, Pose)]
   ): Map[Id, Resolution] = {
 
-    val winner = pickOne(ids)
+    val winner = pickOne(idPoses.map(_._1))
 
-    ids.map { id =>
+    idPoses.map { case (id, pose) =>
       if (Some(id) == winner)
         id -> Resolution.Move(pose)
       else
@@ -212,25 +201,25 @@ object Game {
     intents: Map[Id, Pose]
   ): Map[Id, Resolution] = {
 
-    val grouped = intents.groupMap(_._2)(_._1)
+    val grouped = intents.groupMap(_._2.pos)(a => a)
 
-    grouped.flatMap { case (pose, ids) =>
+    grouped.flatMap { case (pos, idPoses) =>
 
-      val teams = ids.map(id => state.individuals(id).team).toSet
+      val teams = idPoses.map { case (id, pose) => state.individuals(id).team }.toSet
 
-      cellAt(state.grid, pose.pos) match {
+      cellAt(state.grid, pos) match {
 
         // ⛔ outside or obstacle → nobody moves
         case None | Some(Cell.Obstacle) =>
-          ids.map(id => id -> Resolution.Stay(state.individuals(id).pose))
+          idPoses.map { case (id, pose) => id -> Resolution.Stay(Pose(pos, pose.heading)) }
 
         // ⚔️ multiple teams arrive at same cell → all die
         case Some(Cell.Individual(presentId, presentTeamId)) =>
-          resolveSameTeamCollision(state, pose, ids.toSet + presentId)
+          resolveSameTeamCollision(state, pos, idPoses.toSet)
         case _ if teams.size > 1 =>
-          ids.map(id => id -> Resolution.Die)
+          idPoses.map { case (id, _) => id -> Resolution.Die }
         case _ =>
-          resolveSameTeamCollision(state, pose, ids)
+          resolveSameTeamCollision(state, pos, idPoses)
       }
     }
   }

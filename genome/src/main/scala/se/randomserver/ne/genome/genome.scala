@@ -137,11 +137,26 @@ object GenePool:
     }
   } yield Gene(i, from, to, w)
 
-  def genome[F[_]: Monad: Random: HasGenePool, W](nInputs: Int, nOutputs: Int)(using RandomRange[F, W]): F[Genome[W]] = for
-    initial <- Genome[W](nInputs, nOutputs, genes = Set.empty).pure
-    in2out <- initial.inputs.flatMap(i => initial.outputs.map(o => newConnection(i, o))).toList.sequence
-    bias2out <- initial.outputs.map(o => newConnection(initial.bias.start, o)).toList.sequence
-  yield initial.copy(genes = (in2out ++ bias2out).toSet)
+  def genome[F[_]: Monad: Random: HasGenePool, W](nInputs: Int, nOutputs: Int, initialHidden: Int = 30)(using RandomRange[F, W]): F[Genome[W]] =
+    if (initialHidden == 0) 
+      for
+        initial <- Genome[W](nInputs, nOutputs, genes = Set.empty).pure
+        in2out <- initial.inputs.flatMap(i => initial.outputs.map(o => newConnection(i, o))).toList.sequence
+        bias2out <- initial.outputs.map(o => newConnection(initial.bias.start, o)).toList.sequence
+      yield initial.copy(genes = (in2out ++ bias2out).toSet)
+    else
+      for {
+        initial <- Genome[W](nInputs, nOutputs, genes = Set.empty).pure
+        nextId <- initial.nodes.end.pure
+        hidden <- (0 until initialHidden).toList.flatMap { i =>
+          val nodeId = i + nextId
+          val in2Hidden = initial.inputs.map(in => newConnection(in, nodeId)).toList
+          val hidden2Out = initial.outputs.map(out => newConnection(out, nodeId)).toList
+          newConnection(initial.bias.start, nodeId) :: in2Hidden ++ hidden2Out
+        }.sequence
+        bias2out <- initial.outputs.map(o => newConnection(initial.bias.start, o)).toList.sequence
+
+      } yield initial.copy(genes = (hidden ++ bias2out).toSet)
 
   def cross_[F[_]: Applicative, W ](genome1: Genome[W], genome2: Genome[W]): F[Genome[W]] =
     Genome(genome1.nInputs, genome1.nOutputs, genome1.genes union genome2.genes).pure

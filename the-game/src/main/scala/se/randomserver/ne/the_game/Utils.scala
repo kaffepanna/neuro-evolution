@@ -45,12 +45,12 @@ object Utils {
               case _ => false
           }
 
-    def place(id: Game.Id, teamId: Game.TeamId)(using rand: Random): Vector[Vector[Cell]] = {
+    def place(id: Game.Id, teamId: Game.TeamId)(using rand: Random): ((Int, Int), Vector[Vector[Cell]]) = {
       val freePos = allPositions.filterNot { case (r, c) => occupied(r, c) }
       if (freePos.isEmpty) throw new IllegalStateException("No free positions to place on grid")
 
       val (r,c) = freePos(rand.between(0, freePos.size))
-      grid.updated(r, grid(r).updated(c, Cell.Individual(id, teamId)))
+    (r, c) -> grid.updated(r, grid(r).updated(c, Cell.Individual(id, teamId)))
     }
   }
 }
