@@ -3,7 +3,6 @@ import cats.*
 import cats.effect.IO
 import cats.effect.Ref
 import cats.effect.kernel.GenConcurrent
-import cats.effect.std.Queue
 import cats.effect.std.Random
 import cats.effect.syntax.all.*
 import cats.mtl.Ask
@@ -13,19 +12,17 @@ import cats.syntax.functor.*
 import se.randomserver.ne.evaluator.Compiler
 import se.randomserver.ne.evaluator.Compiler.CompiledNetwork
 import se.randomserver.ne.evaluator.Runner
+import se.randomserver.ne.evaluator.Runner.*
 import se.randomserver.ne.evaluator.Runner.ActivationState
-import se.randomserver.ne.evaluator.Runner.{*, given}
-import se.randomserver.ne.evolution.Evolution.{*, given}
+import se.randomserver.ne.evolution.Evolution.*
 import se.randomserver.ne.genome.GenePool
-import se.randomserver.ne.genome.GenePool.{*, given}
-import se.randomserver.ne.genome.Genome
+import se.randomserver.ne.genome.GenePool.*
 import se.randomserver.ne.genome.HasGenePool
 import se.randomserver.ne.genome.RandomRange
 import se.randomserver.ne.genome.SpeciationConfig
 import se.randomserver.ne.the_game.Game
 import se.randomserver.ne.the_game.Game.Cell
 import se.randomserver.ne.the_game.Game.GameState
-import se.randomserver.ne.the_game.Game.IndividualState
 import se.randomserver.ne.the_game.Utils
 import spire.implicits.*
 
@@ -143,10 +140,8 @@ object GameEvolution {
   }
 
   def gameStep[F[_]: Monad: Applicative: Parallel: HasGameEvolutionEnv](
-      count: Int = 1,
       members: Vector[(Int, CompiledNetwork[Double])]
   )(using
-      RR: RandomRange[F, Double],
       R: Random[F]
   )(using
       GenConcurrent[F, Throwable]
@@ -164,7 +159,7 @@ object GameEvolution {
       .toMap
 
     initialIndividuals <- Monad[F].pure(teams.toVector.map {
-      case id -> (teamId, member) => id -> teamId
+      case id -> (teamId, _) => id -> teamId
     })
 
     initialGameState = GameState.random(gameEnv.grid, initialIndividuals.toSet)
@@ -190,7 +185,6 @@ object GameEvolution {
   def evaluateFitness[F[
       _
   ]: Monad: Parallel: Random: HasGameEvolutionEnv: HasGameEvolutionState](using
-      RandomRange[F, Double],
       GenConcurrent[F, Throwable]
   ): F[Vector[Vector[GameState]]] = for {
     env <- getGameEnv
@@ -202,7 +196,7 @@ object GameEvolution {
     }.toVector
 
     runs <- (1 to env.gamesPerGeneration).inclusive.toVector
-      .map(n => gameStep(n, members))
+      .map(_ => gameStep(members))
       .parSequenceN(2)
 
     updatedFitness = runs
@@ -237,7 +231,6 @@ object GameEvolution {
       R: Random[F],
       RR: RandomRange[F, Double]
   )(using GenConcurrent[F, Throwable]): F[Vector[GameState]] = for {
-    env <- getGameEnv
     runs <- evaluateFitness
     _ <- adjustFitnessSharing[F, Double, Double]
     _ <- pushStats(runs)

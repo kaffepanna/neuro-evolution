@@ -1,20 +1,15 @@
 package se.randomserver.ne.graphviz
-
+import cats.effect.Concurrent
+import cats.free.Free
 import cats.syntax.all.*
+import fs2.*
+import fs2.io.process.ProcessBuilder
+import fs2.io.process.Processes
+import se.randomserver.ne.evaluator.Compiler.CompiledBlock
+import se.randomserver.ne.evaluator.Compiler.CompiledNetwork
 import se.randomserver.ne.genome.Genome
 import se.randomserver.ne.graphviz.GraphViz
-import cats.syntax.all.{*, given}
-import fs2.io.process.{Process, ProcessBuilder}
 import se.randomserver.ne.graphviz.StringCompiler
-import cats.effect.Async
-import cats.effect.IO
-import fs2.io.process.Processes
-import fs2.{*, given}
-import cats.effect.Concurrent
-import se.randomserver.ne.evaluator.Compiler.CompiledNetwork
-import se.randomserver.ne.evaluator.Compiler.CompiledBlock
-import se.randomserver.ne.evaluator.Compiler.CompiledNode
-import cats.free.Free
 
 object GraphvizHelper:
   import GraphViz._
@@ -86,26 +81,26 @@ object GraphvizHelper:
     digraph {
       for {
         _ <- attribute("rankdir", "LR")
-        inputs <- subgraph("cluster_inputs")(for {
+        _ <- subgraph("cluster_inputs")(for {
           _ <- label("inputs")
           _ <- g.inputs.toList.map(nid => node(nid.toString)).sequence
         } yield ())
 
-        hidden <- subgraph("cluster_hidden") {
+        _ <- subgraph("cluster_hidden") {
           g.hidden.toList.map(nid => node(nid.toString)).sequence
         }
 
-        outputs <- subgraph("cluster_output")(for {
+        _ <- subgraph("cluster_output")(for {
           _ <- label("outputs")
           _ <- g.outputs.toList.map(nid => node(nid.toString)).sequence
         } yield ())
 
-        bias <- subgraph("cluster_bias")(for {
+        _ <- subgraph("cluster_bias")(for {
           _ <- label("bias")
           _ <- g.bias.toList.map(nid => node(nid.toString)).sequence
         } yield ())
 
-        edges <- g.genes
+        _ <- g.genes
           .filter(gene => gene.enabled)
           .toList
           .map { gene =>
@@ -141,8 +136,8 @@ object GraphvizHelper:
 
       for {
         a <- pipe.compile.string
-        fehExit <- feh.exitValue
-        dotExit <- dot.exitValue
+        _ <- feh.exitValue
+        _ <- dot.exitValue
       } yield a
     }
   }

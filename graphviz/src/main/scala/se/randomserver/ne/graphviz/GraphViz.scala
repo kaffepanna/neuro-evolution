@@ -1,10 +1,5 @@
 package se.randomserver.ne.graphviz
 
-import cats.{Id, ~>}
-import cats.arrow.FunctionK
-
-import scala.collection.mutable
-
 object GraphViz {
 
   case class Node(name: String, attributes: Map[String, String] = Map.empty)

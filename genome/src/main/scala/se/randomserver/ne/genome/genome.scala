@@ -1,26 +1,23 @@
 package se.randomserver.ne.genome
 
-import cats.{Applicative, FlatMap, Functor, Monad, MonadError, Order}
-import cats.effect.IO
+import algebra.ring.Field
+import algebra.ring.Semiring
+import algebra.ring.Signed
+import cats.Applicative
+import cats.Monad
+import cats.Order
 import cats.effect.std.Random
+import cats.mtl.Stateful
+import cats.syntax.applicative.*
 import cats.syntax.flatMap.*
 import cats.syntax.functor.*
-import cats.syntax.applicative.*
 import cats.syntax.traverse.*
-import spire.syntax.all.*
-import spire.math.*
-import spire.implicits.given
-import spire.compat.ordering
-import algebra.ring.Field
+import pureconfig.ConfigReader
 import se.randomserver.ne.genome.RandomRange
-import se.randomserver.ne.genome.RandomRange.given
+import spire.compat.ordering
+import spire.implicits.given
 
 import scala.annotation.unused
-import pureconfig.ConfigReader
-import algebra.ring.Semiring
-import algebra.ring.Ring
-import algebra.ring.Signed
-import cats.mtl.Stateful
 
 final case class Gene[W](
     innovation: Long,
@@ -56,7 +53,6 @@ final case class Genome[W](nInputs: Int, nOutputs: Int, genes: Set[Gene[W]]):
       Signed[W],
       Order[W]
   ): W =
-    import Genome.*
     val Zero = Field[W].zero
 
     val C1 = Field[W].fromDouble(cfg.c1)
@@ -155,7 +151,7 @@ object GenePool:
       (state.copy(innovations = updatedInnovations) -> innovation).pure[F]
     }
 
-  def newConnection[F[_]: Monad: HasGenePool: Random, W](
+  def newConnection[F[_]: Monad: HasGenePool, W](
       from: Int,
       to: Int,
       weight: Option[W] = None
@@ -167,7 +163,7 @@ object GenePool:
     }
   } yield Gene(i, from, to, w)
 
-  def genome[F[_]: Monad: Random: HasGenePool, W](
+  def genome[F[_]: Monad: HasGenePool, W](
       nInputs: Int,
       nOutputs: Int,
       initialHidden: Int = 30
@@ -213,7 +209,7 @@ object GenePool:
       genome1.genes union genome2.genes
     ).pure
 
-  def cross[F[_]: Monad: Random: HasGenePool, W](
+  def cross[F[_]: Monad: Random, W](
       fitter: Genome[W],
       other: Genome[W]
   ): F[Genome[W]] = {

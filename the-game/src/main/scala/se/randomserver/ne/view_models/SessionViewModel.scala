@@ -1,35 +1,27 @@
 package se.randomserver.ne.view_models
 
-import scalafx.collections.ObservableHashMap
-import se.randomserver.ne.the_game.Game.GameState
-import scalafx.beans.property.LongProperty
-import scalafx.beans.property.IntegerProperty
-import scalafx.beans.value.ObservableValue
-import scalafx.Includes.{*, given}
-import scalafx.beans.property.ObjectProperty
 import cats.effect.IO
-import cats.effect.std.Queue
-import scalafx.application.Platform
-import se.randomserver.ne.GameEvolution
-import scalafx.collections.ObservableMap.Change
-import scalafx.collections.ObservableMap
-import se.randomserver.ne.evolution.Evolution.SpeciesId
-import cats.effect.std.Dispatcher
-import cats.effect.kernel.Resource
-import cats.effect.kernel.Fiber
-import cats.effect.FiberIO
 import cats.effect.std.Random
-import se.randomserver.ne.BackgroundRuntime
-import se.randomserver.ne.StatsCallback
-import se.randomserver.ne.Stats
-import se.randomserver.ne.GameEvolution.GameEvolutionEnv
-import se.randomserver.ne.evolution.Evolution.EvolutionEnv
-import se.randomserver.ne.genome.SpeciationConfig
-import se.randomserver.ne.genome.RandomRangeConfig
-import se.randomserver.ne.genome.RandomRange
+import scalafx.application.Platform
 import scalafx.beans.property.BooleanProperty
-import se.randomserver.ne.ui.SessionDialog
+import scalafx.beans.property.IntegerProperty
+import scalafx.beans.property.LongProperty
+import scalafx.beans.property.ObjectProperty
+import scalafx.collections.ObservableHashMap
+import scalafx.collections.ObservableMap
+import se.randomserver.ne.BackgroundRuntime
+import se.randomserver.ne.GameEvolution
+import se.randomserver.ne.GameEvolution.GameEvolutionEnv
+import se.randomserver.ne.Stats
+import se.randomserver.ne.StatsCallback
+import se.randomserver.ne.evolution.Evolution.EvolutionEnv
+import se.randomserver.ne.evolution.Evolution.SpeciesId
+import se.randomserver.ne.genome.RandomRange
+import se.randomserver.ne.genome.RandomRangeConfig
+import se.randomserver.ne.genome.SpeciationConfig
 import se.randomserver.ne.the_game.Game
+import se.randomserver.ne.the_game.Game.GameState
+import se.randomserver.ne.ui.SessionDialog
 
 class SessionViewModel(runtime: BackgroundRuntime) {
   val generations = new ObservableHashMap[Long, Vector[GameState]]()

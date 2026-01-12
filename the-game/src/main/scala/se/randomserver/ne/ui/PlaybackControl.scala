@@ -1,15 +1,14 @@
 package se.randomserver.ne.ui
-import se.randomserver.ne.view_models.PlaybackViewModel
-import scalafx.scene.layout.HBox
-import scalafx.scene.control.Button
-import scalafx.beans.property.StringProperty
-import scalafx.scene.control.Slider
-import scalafx.scene.layout.VBox
-import scalafx.scene.layout.Priority
-import scalafx.geometry.Pos
-import scalafx.geometry.Insets
-import org.kordamp.ikonli.javafx.FontIcon
 import org.kordamp.ikonli.fontawesome5.FontAwesomeSolid
+import org.kordamp.ikonli.javafx.FontIcon
+import scalafx.geometry.Insets
+import scalafx.geometry.Pos
+import scalafx.scene.control.Button
+import scalafx.scene.control.Slider
+import scalafx.scene.layout.HBox
+import scalafx.scene.layout.Priority
+import scalafx.scene.layout.VBox
+import se.randomserver.ne.view_models.PlaybackViewModel
 
 class PlaybackControl(playbackViewModel: PlaybackViewModel) extends HBox {
   val playPauseButton = new Button {

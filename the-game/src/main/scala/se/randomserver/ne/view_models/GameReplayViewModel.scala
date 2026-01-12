@@ -1,9 +1,8 @@
 package se.randomserver.ne.view_models
 
 import scalafx.beans.property.ObjectProperty
-import se.randomserver.ne.the_game.Game.GameState
-import scalafx.beans.binding.Bindings
 import se.randomserver.ne.the_game.Game
+import se.randomserver.ne.the_game.Game.GameState
 
 class GameReplayViewModel(session: SessionViewModel) {
   val gameState = ObjectProperty[Option[GameState]](None)

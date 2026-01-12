@@ -1,36 +1,33 @@
 package se.randomserver.ne.evolution
 
-import se.randomserver.ne.genome.Genome
-import cats.data.StateT
+import algebra.ring.Semiring
+import algebra.ring.Signed
 import cats.Monad
-import cats.data.ReaderT
-import cats.Applicative
 import cats.effect.std.Random
-import cats.mtl.Stateful
 import cats.mtl.Ask
-import cats.syntax.flatMap.*
-import cats.syntax.functor.*
+import cats.mtl.Stateful
 import cats.syntax.applicative.*
-import cats.syntax.traverse.*
+import cats.syntax.flatMap.*
 import cats.syntax.foldable.*
-import spire.compat.ordering
-import spire.syntax.all.*
-import spire.math.*
-import spire.implicits.given
-import spire.algebra.{Order, Ring, Field, Monoid}
-import se.randomserver.ne.genome.SpeciationConfig
+import cats.syntax.functor.*
+import cats.syntax.traverse.*
+import se.randomserver.ne.evaluator.Compiler
+import se.randomserver.ne.evaluator.Compiler.CompiledNetwork
+import se.randomserver.ne.evaluator.Runner
+import se.randomserver.ne.genome.GenePool
+import se.randomserver.ne.genome.GenePool.*
 import se.randomserver.ne.genome.GenePool.cross
 import se.randomserver.ne.genome.GenePool.mutate
-import se.randomserver.ne.genome.RandomRange
-import se.randomserver.ne.genome.GenePool.{*, given}
-import se.randomserver.ne.genome.GenePool
-import se.randomserver.ne.evolution.EvolutionConfig
-import se.randomserver.ne.evaluator.Compiler
-import se.randomserver.ne.evaluator.Runner
-import se.randomserver.ne.evaluator.Compiler.CompiledNetwork
-import algebra.ring.Semiring
+import se.randomserver.ne.genome.Genome
 import se.randomserver.ne.genome.HasGenePool
-import algebra.ring.Signed
+import se.randomserver.ne.genome.RandomRange
+import se.randomserver.ne.genome.SpeciationConfig
+import spire.algebra.Field
+import spire.algebra.Order
+import spire.compat.ordering
+import spire.implicits.given
+import spire.math.*
+import spire.syntax.all.*
 
 object Evolution {
   trait Epsilon[W] {
@@ -156,7 +153,7 @@ object Evolution {
       HasEvolutionState[F, W, S]
   ): F[Unit] = for {
     state <- getState[F, W, S]
-    adjusted = state.fitness.map { case (genomeId, score) =>
+    adjusted = state.fitness.map { case (genomeId, _) =>
       val speciesSize = state.species.find(_.members.contains(genomeId)) match {
         case Some(species) => species.members.size
         case None          =>

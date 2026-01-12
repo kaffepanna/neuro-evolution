@@ -1,24 +1,19 @@
 package se.randomserver.ne.ui
 
-import scalafx.Includes.{*, given}
-import scalafx.scene.control.Dialog
-import se.randomserver.ne.GameEvolution.GameEvolutionEnv
-import scalafx.scene.control.ButtonType
-import scalafx.scene.control.ButtonBar.ButtonData
-import scalafx.scene.control.TextField
-import scalafx.scene.layout.{GridPane => FXGridPane}
+import scalafx.Includes.*
 import scalafx.beans.property.ObjectProperty
+import scalafx.geometry.Insets
+import scalafx.scene.control.ButtonBar.ButtonData
+import scalafx.scene.control.ButtonType
+import scalafx.scene.control.Dialog
+import scalafx.scene.control.TextField
+import scalafx.scene.layout.GridPane as FXGridPane
+import scalafx.scene.layout.HBox
+import scalafx.scene.layout.Region
+import scalafx.scene.paint.Color
+import se.randomserver.ne.GameEvolution.GameEvolutionEnv
 import se.randomserver.ne.the_game.Game
 import se.randomserver.ne.the_game.Game.Cell
-import scalafx.scene.paint.Color
-import scalafx.scene.layout.HBox
-import scalafx.scene.layout.BorderPane
-import scalafx.scene.layout.StackPane
-import scalafx.geometry.Pos
-import scalafx.geometry.Insets
-import scalafx.scene.layout.Priority
-import scalafx.scene.layout.VBox
-import scalafx.scene.layout.Region
 import se.randomserver.ne.ui.GridPane
 import se.randomserver.ne.ui.GridPane.CellStyle
 
@@ -32,7 +27,7 @@ class SessionDialog(env: GameEvolutionEnv) extends Dialog[GameEvolutionEnv] {
   val gridView = GridPane[Game.Cell](gridProperty)
   resizable = true
 
-  gridView.stylePicker = { (r, c, cell) =>
+  gridView.stylePicker = { (_, _, cell) =>
     cell match
       case Cell.Empty                => CellStyle(Color.WhiteSmoke, 0)
       case Cell.Individual(id, team) => CellStyle(Color.Red, 4)

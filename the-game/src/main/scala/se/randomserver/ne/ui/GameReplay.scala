@@ -1,22 +1,15 @@
 package se.randomserver.ne.ui
-
-import scalafx.scene.layout.Pane
-import scalafx.scene.canvas.Canvas
-import scalafx.beans.property.ObjectProperty
 import scalafx.scene.paint.Color
 import se.randomserver.ne.the_game.Game
-import se.randomserver.ne.view_models.GameReplayViewModel
-import se.randomserver.ne.ui.ScalaFxOps.color
-import se.randomserver.ne.ui.GridPane.CellStyle
-import se.randomserver.ne.the_game.Game.Heading
 import se.randomserver.ne.the_game.Game.Cell
-
-import scalafx.scene.layout.Region
-import scalafx.scene.layout.Priority
+import se.randomserver.ne.the_game.Game.Heading
+import se.randomserver.ne.ui.GridPane.CellStyle
+import se.randomserver.ne.ui.ScalaFxOps.color
+import se.randomserver.ne.view_models.GameReplayViewModel
 
 class GameReplay(gridViewModel: GameReplayViewModel)
     extends GridPane[Game.Cell](gridViewModel.gridProperty) {
-  stylePicker = { (r, c, cell) =>
+  stylePicker = { (_, _, cell) =>
     cell match
       case Cell.Empty                => CellStyle(Color.WhiteSmoke, 0)
       case Cell.Individual(id, team) => CellStyle(team.color, 4)
@@ -24,7 +17,7 @@ class GameReplay(gridViewModel: GameReplayViewModel)
       case Cell.Food                 => CellStyle(Color.Green, 0)
   }
 
-  this.cellOverlay = { (row, col, cell, xy, cellSize, gc) =>
+  this.cellOverlay = { (_, _, cell, xy, cellSize, gc) =>
     cell match
       case Cell.Individual(id, team) =>
         gridViewModel.gameState.value.foreach { gameState =>

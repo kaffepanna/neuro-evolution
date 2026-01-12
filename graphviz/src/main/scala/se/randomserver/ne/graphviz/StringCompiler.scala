@@ -1,10 +1,9 @@
 package se.randomserver.ne.graphviz
 
-import GraphViz._
-
 import cats.data.Writer
-import cats.{Id, ~>}
-import cats.syntax.all.{*, given}
+import cats.~>
+
+import GraphViz.*
 
 object StringCompiler:
   type GraphVizState[A] = Writer[String, A]

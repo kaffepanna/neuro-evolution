@@ -1,36 +1,30 @@
 package se.randomserver.ne
 import cats.*
-import cats.data.{State, StateT}
-import cats.effect.std.{QueueSource, Random}
-import cats.effect.{ExitCode, IO, IOApp}
-import cats.syntax.all.{*, given}
-import se.randomserver.ne.genome.{GenePool, Genome, HasGenePool}
-import se.randomserver.ne.graphviz.StringCompiler
-import se.randomserver.ne.graphviz.GraphvizHelper
-
-import scala.annotation.unused
-import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, Future}
-import se.randomserver.ne.evolution.EvolutionConfig
-import se.randomserver.ne.evolution.Evolution.{
-  HasEvolutionEnv,
-  HasEvolutionState
-}
-import se.randomserver.ne.genome.SpeciationConfig
+import cats.effect.ExitCode
+import cats.effect.IO
+import cats.effect.IOApp
+import cats.effect.kernel.Ref
+import cats.effect.std.Random
+import cats.mtl.Ask
+import cats.mtl.Stateful
+import cats.syntax.all.*
 import pureconfig.ConfigReader
 import pureconfig.ConfigSource
-import pureconfig.module.catseffect.syntax.{*, given}
-
-import se.randomserver.ne.graphviz.GraphViz
+import pureconfig.module.catseffect.syntax.*
+import se.randomserver.ne.evolution.Evolution.*
 import se.randomserver.ne.evolution.Evolution.EvolutionEnv
-import se.randomserver.ne.evolution.Evolution.{*, given}
+import se.randomserver.ne.evolution.Evolution.HasEvolutionEnv
+import se.randomserver.ne.evolution.Evolution.HasEvolutionState
+import se.randomserver.ne.evolution.EvolutionConfig
+import se.randomserver.ne.genome.GenePool
+import se.randomserver.ne.genome.HasGenePool
 import se.randomserver.ne.genome.RandomRange
 import se.randomserver.ne.genome.RandomRangeConfig
-import cats.mtl.Ask
-import cats.effect.kernel.Ref
-import cats.mtl.Stateful
+import se.randomserver.ne.genome.SpeciationConfig
+import se.randomserver.ne.graphviz.GraphvizHelper
 import spire.implicits.*
+
+import scala.annotation.unused
 
 case class AppConfig(
     evolution: EvolutionConfig,

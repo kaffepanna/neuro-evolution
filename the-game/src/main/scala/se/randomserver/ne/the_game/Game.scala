@@ -81,7 +81,7 @@ object Game {
       println(s"Could not find ind $id in ${state.individuals.keySet}")
     }
     val ind = indO.get
-    val pose @ Pose((r0, c0), heading) = ind.pose
+    val Pose((r0, c0), heading) = ind.pose
     val size = 2 * radius + 1
 
     val base = Vector.tabulate(size, size) { (i, j) =>
@@ -141,44 +141,42 @@ object Game {
   ): Map[Id, Resolution] = {
 
     val deaths = intents.filter(_._2.isInstanceOf[Resolution.Die.type])
-    val grouped = intents
+    val grouped: Map[
+      (Int, Int),
+      scala.collection.immutable.Iterable[(Int, Resolution)]
+    ] = intents.toList
       .collect {
         case v @ (_, Resolution.Move(pose)) => pose.pos -> v
         case v @ (_, Resolution.Stay(pose)) => pose.pos -> v
       }
       .groupMap(_._1)(_._2)
 
-    if grouped.forall(_._2.size == 1)
-    then intents
-    else
-      val resolved = grouped.flatMap { case (_, idResolutions) =>
-        val teams = idResolutions.map { case (id, _) =>
-          state.individuals(id).team
-        }.toSet
-        if (teams.size > 1)
-          idResolutions.map { case (id, _) => id -> Resolution.Die }
-        else if (idResolutions.size > 1)
-          idResolutions.map {
-            case (id, Resolution.Move(_)) =>
-              id -> Resolution.Stay(state.individuals(id).pose)
-            case (id, stay: Resolution.Stay) => id -> stay
-            case _ => throw new IllegalStateException(s"un-expected Die")
-          }
-        else
-          idResolutions
-      }
-      // resolve(state, resolved ++ deaths)
-      resolved
-        .collect {
-          case (_, r @ Resolution.Move(to))    => to -> r
-          case (_, r @ Resolution.Stay(where)) => where -> r
+    val resolved = grouped.flatMap { case (pos, idres) =>
+      val idResolutions = idres.toMap
+      val teams = idResolutions.map { case (id, _) =>
+        state.individuals(id).team
+      }.toSet
+      if (teams.size > 1)
+        idResolutions.map { case (id, _) => id -> Resolution.Die }
+      else if (idResolutions.size > 1)
+        val stays = idResolutions.filter { case (i, _) =>
+          state.individuals(i).pose.pos == pos && state.individuals(i).alive
+        }.toMap
+        if (stays.size > 1) {
+          (idResolutions -- stays.keySet).map { case (id, _) =>
+            // others stay at their original position
+            id -> Resolution.Stay(state.individuals(id).pose)
+          } ++ stays
+        } else {
+          val winner = idResolutions.head
+          (idResolutions - winner._1).map { case (id, _) =>
+            id -> Resolution.Stay(state.individuals(id).pose)
+          } + winner
         }
-        .groupMap(_._1)(_._2)
-        .foreach { case (_, ps) =>
-          if ps.size > 1 then println(s"still conflicts $ps")
-          else ()
-        }
-      resolved ++ deaths
+      else idResolutions
+    }.toMap
+
+    resolved ++ deaths
   }
 
   def resolveConflicts(
@@ -189,7 +187,10 @@ object Game {
     val resolutions = intents.map {
       case (id, pose) if state.individuals(id).pose.pos == pose.pos =>
         id -> Resolution.Stay(pose)
-      case (id, pose) if state.grid.cellAt(pose.pos) == Cell.Obstacle =>
+      case (id, pose)
+          if state.grid
+            .cellAt(pose.pos)
+            .isInstanceOf[Cell.Obstacle.type | Cell.Individual] =>
         id -> Resolution.Stay(state.individuals(id).pose)
       case (id, pose) => id -> Resolution.Move(pose)
     }
@@ -232,6 +233,8 @@ object Game {
     val updatedIndividuals =
       state.individuals.map { case (id, ind) =>
         resolutions.get(id) match {
+          case Some(Resolution.Stay(pose)) =>
+            id -> ind.copy(pose = pose, visited = ind.visited + pose.pos)
           case Some(Resolution.Move(pose)) =>
             id -> ind.copy(pose = pose, visited = ind.visited + pose.pos)
           case Some(Resolution.Die) =>

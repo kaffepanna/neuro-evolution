@@ -20,7 +20,7 @@ case class RandomRangeConfig(
 
 object RandomRange:
 
-  trait RR[F[_]: Random, W] {
+  trait RR[F[_], W] {
     def random(range: (W, W)): F[W]
   }
 
@@ -36,7 +36,7 @@ object RandomRange:
   def apply[F[_]: Random](cfg: RandomRangeConfig): RandomRange[F, Double] =
     apply(cfg.initRange, cfg.perturbRange, cfg.clampRange)
 
-  def apply[F[_]: Random, A: RR[F, _]: Numeric: Order](
+  def apply[F[_], A: RR[F, _]: Numeric: Order](
       initRange: (A, A),
       perturbRange: (A, A),
       clampRange: (A, A)
