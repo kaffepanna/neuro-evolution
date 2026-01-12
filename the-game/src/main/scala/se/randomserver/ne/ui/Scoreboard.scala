@@ -19,19 +19,22 @@ class Scoreboard(model: ScoreboardViewModel) extends StackPane {
     columns ++= Seq(
       new TableColumn[ScoreRow, Color] {
         text = "Team"
-        cellValueFactory = { row => ObjectProperty[Color](row.value.team.color) }
+        cellValueFactory = { row =>
+          ObjectProperty[Color](row.value.team.color)
+        }
         cellFactory = (cell, color) => {
-          cell.graphic = Rectangle(8,8, color)
+          cell.graphic = Rectangle(8, 8, color)
         }
       },
       new TableColumn[ScoreRow, String] {
         text = "Id"
         cellValueFactory = { row => StringProperty(row.value.id.toString) }
       },
-
       new TableColumn[ScoreRow, String] {
         text = "Score"
-        cellValueFactory = { cell => StringProperty(String.format("%.2f", cell.value.score))}
+        cellValueFactory = { cell =>
+          StringProperty(String.format("%.2f", cell.value.score))
+        }
       }
     )
   }

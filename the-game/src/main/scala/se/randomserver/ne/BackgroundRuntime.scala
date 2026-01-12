@@ -1,21 +1,21 @@
 package se.randomserver.ne
 
-import cats.syntax.all.*
-import cats.effect.std.Dispatcher
-import cats.effect.IO
 import cats.effect.FiberIO
+import cats.effect.IO
+import cats.effect.std.Dispatcher
+import cats.syntax.all.*
 
 class BackgroundRuntime(dispatcher: Dispatcher[IO], computeThreads: Int) {
   private var fiber: Option[FiberIO[Unit]] = None
 
   def start(program: IO[Unit]): Unit = dispatcher.unsafeRunAndForget {
-    program.start.flatMap { f => IO { fiber = Some(f)} }
+    program.start.flatMap { f => IO { fiber = Some(f) } }
   }
 
   def stop(): Unit = dispatcher.unsafeRunSync(stopIO())
 
   def stopIO(): IO[Unit] = fiber.fold(IO.unit) { f =>
-    f.cancel 
+    f.cancel
   }
 
   def shutdown(): IO[Unit] =

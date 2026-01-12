@@ -5,21 +5,25 @@ import cats.arrow.FunctionK
 
 import scala.collection.mutable
 
-
 object GraphViz {
 
   case class Node(name: String, attributes: Map[String, String] = Map.empty)
-  case class Edge(from: String, to: String, attributes: Map[String, String] = Map.empty)
+  case class Edge(
+      from: String,
+      to: String,
+      attributes: Map[String, String] = Map.empty
+  )
   case class Attribute(key: String, value: String)
 
   enum GrammarA[A]:
     case GGraph(g: Grammar[Unit]) extends GrammarA[Unit]
     case GDiGraph(g: Grammar[Unit]) extends GrammarA[Unit]
     case GSubGraph(name: String, g: Grammar[A]) extends GrammarA[A]
-    case GNode(name: String, attributes: Seq[(String, String)])             extends GrammarA[Node]
-    case GEdge(from: String, to: String, attributes: Seq[(String, String)]) extends GrammarA[Edge]
+    case GNode(name: String, attributes: Seq[(String, String)])
+        extends GrammarA[Node]
+    case GEdge(from: String, to: String, attributes: Seq[(String, String)])
+        extends GrammarA[Edge]
     case GAttribute(key: String, value: String) extends GrammarA[Attribute]
-
 
   import cats.free.Free
   import cats.free.Free.liftF
@@ -43,9 +47,16 @@ object GraphViz {
 
   def label(l: String) = attribute("label", s"\"$l\"")
 
-  def edge_(n1: String, n2: String, attributes: (String, String)*): Grammar[Edge] =
+  def edge_(
+      n1: String,
+      n2: String,
+      attributes: (String, String)*
+  ): Grammar[Edge] =
     liftF[GrammarA, Edge](GrammarA.GEdge(n1, n2, attributes))
-  def edge(n1: Node, n2: Node, attributes: Seq[(String, String)] = Seq.empty): Grammar[Edge] =
+  def edge(
+      n1: Node,
+      n2: Node,
+      attributes: Seq[(String, String)] = Seq.empty
+  ): Grammar[Edge] =
     liftF[GrammarA, Edge](GrammarA.GEdge(n1.name, n2.name, attributes))
 }
-

@@ -8,12 +8,13 @@ import scalafx.beans.binding.Bindings
 class PlaybackViewModel(session: SessionViewModel) {
   val playing = BooleanProperty(false)
   val speedFps = IntegerProperty(5)
-  val indexMax = Bindings.createIntegerBinding( () =>
-    { 
+  val indexMax = Bindings.createIntegerBinding(
+    () => {
       session.currentGeneration.value match
         case Some(gen) => gen.size - 1
-        case _ => 0
-    }, session.currentGeneration
+        case _         => 0
+    },
+    session.currentGeneration
   )
   val index = IntegerProperty(0)
   index <==> session.currentGameStateIndex
@@ -23,10 +24,11 @@ class PlaybackViewModel(session: SessionViewModel) {
   session.currentGeneration.onChange { (_, _, gen) =>
     index.value = 0
   }
-  
+
   val timer = AnimationTimer { now =>
     val targetFPS = speedFps.value
-    val targetDelayNs = if (targetFPS > 0) (1e9 / targetFPS).toLong else Long.MaxValue
+    val targetDelayNs =
+      if (targetFPS > 0) (1e9 / targetFPS).toLong else Long.MaxValue
 
     if (now - lastUpdate >= targetDelayNs) {
       lastUpdate = now

@@ -36,50 +36,57 @@ class SessionViewModel(runtime: BackgroundRuntime) {
   val speciesFitness = new ObservableHashMap[Long, Map[SpeciesId, Double]]
   val currentGenerationId = LongProperty(-1)
   val currentGameStateIndex = IntegerProperty(-1)
-  val ranges = ObjectProperty[RandomRangeConfig](RandomRangeConfig(
-    (-1, 1), (-5.0, 5.0), (-8, 8)
-  ))
+  val ranges = ObjectProperty[RandomRangeConfig](
+    RandomRangeConfig(
+      (-1, 1),
+      (-5.0, 5.0),
+      (-8, 8)
+    )
+  )
 
-  //def transferFn(x: Double) = 1.0d / (1.0d + Math.exp(-x))
+  // def transferFn(x: Double) = 1.0d / (1.0d + Math.exp(-x))
   def transferFn(x: Double) =
     val expNeg = Math.exp(-x)
     val expPos = Math.exp(x)
     (expPos - expNeg) / (expPos + expNeg)
-                              
+
   val gameEvolutionEnv = ObjectProperty[GameEvolutionEnv](
     GameEvolutionEnv(
-          teams = 1,
-          gameIterations = 200,
-          gamesPerGeneration =10,
-          initialHidden = 60,
-          grid = Vector.fill(30, 30)(Game.Cell.Empty),
-          visionRadius = 2,
-          evolutionEnv = EvolutionEnv[Double, Double](
-            data = List.empty,
-            transfer = transferFn,
-            fitnessFn = (_, _) => 0,
-            popsize = 40,
-            generations = 1000,
-            defaultBias = 1.0,
-            weightChance = 0.20,
-            resetChance = 0.00,
-            connectionChance = 0.10,
-            nodeChance = 0.10,
-            eliteFraction = 0.10,
-            minScore = None,
-            recurrentSteps = 1,
-            speciationConfig = SpeciationConfig(
-              30.0, 25.0, 0.2, 1.0
-            )
+      teams = 1,
+      gameIterations = 200,
+      gamesPerGeneration = 10,
+      initialHidden = 60,
+      grid = Vector.fill(30, 30)(Game.Cell.Empty),
+      visionRadius = 2,
+      evolutionEnv = EvolutionEnv[Double, Double](
+        data = List.empty,
+        transfer = transferFn,
+        fitnessFn = (_, _) => 0,
+        popsize = 40,
+        generations = 1000,
+        defaultBias = 1.0,
+        weightChance = 0.20,
+        resetChance = 0.00,
+        connectionChance = 0.10,
+        nodeChance = 0.10,
+        eliteFraction = 0.10,
+        minScore = None,
+        recurrentSteps = 1,
+        speciationConfig = SpeciationConfig(
+          30.0,
+          25.0,
+          0.2,
+          1.0
         )
       )
+    )
   )
 
   val currentGeneration = ObjectProperty[Option[Vector[GameState]]](None)
 
   currentGeneration <== currentGenerationId.map { id =>
-      val gen = generations.get(id)
-      Option.when(gen != null)(gen)
+    val gen = generations.get(id)
+    Option.when(gen != null)(gen)
   }
 
   val currentGameState = ObjectProperty[Option[GameState]](None)
@@ -94,11 +101,11 @@ class SessionViewModel(runtime: BackgroundRuntime) {
   generations.onChange { (_, change) =>
     if (currentGenerationId.intValue < 0)
       change match
-        case ObservableMap.Add(key, _) => 
+        case ObservableMap.Add(key, _) =>
           currentGenerationId.value = key
-        case ObservableMap.Remove(_ ,_ ) =>
+        case ObservableMap.Remove(_, _) =>
           ()
-      
+
   }
 
   val running = BooleanProperty(false)
@@ -116,7 +123,7 @@ class SessionViewModel(runtime: BackgroundRuntime) {
   val traceIO: IO[Unit] = for {
     rnd <- Random.scalaUtilRandom[IO]
     given Random[IO] = rnd
-    given RandomRange[IO, Double] = RandomRange(ranges()) 
+    given RandomRange[IO, Double] = RandomRange(ranges())
     _ <- GameEvolution.run(gameEvolutionEnv())
   } yield ()
 

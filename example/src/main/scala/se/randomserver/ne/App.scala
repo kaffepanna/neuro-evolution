@@ -13,7 +13,10 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Future}
 import se.randomserver.ne.evolution.EvolutionConfig
-import se.randomserver.ne.evolution.Evolution.{HasEvolutionEnv, HasEvolutionState}
+import se.randomserver.ne.evolution.Evolution.{
+  HasEvolutionEnv,
+  HasEvolutionState
+}
 import se.randomserver.ne.genome.SpeciationConfig
 import pureconfig.ConfigReader
 import pureconfig.ConfigSource
@@ -30,9 +33,9 @@ import cats.mtl.Stateful
 import spire.implicits.*
 
 case class AppConfig(
-  evolution: EvolutionConfig,
-  ranges: RandomRangeConfig,
-  speciation: SpeciationConfig,
+    evolution: EvolutionConfig,
+    ranges: RandomRangeConfig,
+    speciation: SpeciationConfig
 ) derives ConfigReader
 
 object App extends IOApp {
@@ -72,9 +75,15 @@ object App extends IOApp {
 
     // fitness function using Individual.evaluate (returns genome fitness in [0..1])
     // fitness function that computes a single Double score from all outputs/expected pairs
-    val fitnessFn: (List[List[Double]], List[List[Double]]) => Double = (outputsList, expectedList) =>
-      val totalSumsq = outputsList.zip(expectedList).map { case (outs, exp) => outs.zip(exp).map { case (a,b) => Math.pow(a-b, 2) }.sum }.sum
-      1 - Math.sqrt(totalSumsq / outputsList.size)
+    val fitnessFn: (List[List[Double]], List[List[Double]]) => Double =
+      (outputsList, expectedList) =>
+        val totalSumsq = outputsList
+          .zip(expectedList)
+          .map { case (outs, exp) =>
+            outs.zip(exp).map { case (a, b) => Math.pow(a - b, 2) }.sum
+          }
+          .sum
+        1 - Math.sqrt(totalSumsq / outputsList.size)
 
     for {
       appConfig <- ConfigSource.defaultApplication.loadF[IO, AppConfig]()
@@ -99,17 +108,25 @@ object App extends IOApp {
         eliteFraction = evCfg.eliteFraction,
         minScore = evCfg.targetFitness,
         recurrentSteps = evCfg.recurrentSteps,
-        speciationConfig = sCfg,
+        speciationConfig = sCfg
       )
 
-      evolutionStateRef <- Ref.of[IO, EvolutionState[Double, Double]](EvolutionState[Double, Double]()) //EvolutionState[Double, Double]()
+      evolutionStateRef <- Ref.of[IO, EvolutionState[Double, Double]](
+        EvolutionState[Double, Double]()
+      ) // EvolutionState[Double, Double]()
       genePoolStateRef <- Ref.of[IO, GenePool](GenePool(0, Map.empty))
 
-      given HasEvolutionEnv[IO, Double, Double] = Ask.const[IO, EvolutionEnv[Double, Double]](evolutionEnv)
-      given HasEvolutionState[IO, Double, Double] = new Stateful[IO, EvolutionState[Double, Double]] {
+      given HasEvolutionEnv[IO, Double, Double] = Ask
+        .const[IO, EvolutionEnv[Double, Double]](evolutionEnv)
+      given HasEvolutionState[IO, Double, Double] = new Stateful[
+        IO,
+        EvolutionState[Double, Double]
+      ] {
         override def monad: Monad[IO] = summon[Monad[IO]]
-        override def get: IO[EvolutionState[Double, Double]] = evolutionStateRef.get
-        override def set(s: EvolutionState[Double, Double]): IO[Unit] = evolutionStateRef.set(s)
+        override def get: IO[EvolutionState[Double, Double]] =
+          evolutionStateRef.get
+        override def set(s: EvolutionState[Double, Double]): IO[Unit] =
+          evolutionStateRef.set(s)
       }
       given HasGenePool[IO] = new Stateful[IO, GenePool] {
         override def monad: Monad[IO] = summon[Monad[IO]]
@@ -117,13 +134,21 @@ object App extends IOApp {
         override def set(s: GenePool): IO[Unit] = genePoolStateRef.set(s)
       }
 
-
       _ <- evolve[IO, Double, 2, 1, Double]
       finalState <- evolutionStateRef.get
-      winners = finalState.species.map { species =>
-        species.members.maxByOption(finalState.fitness)
-      }.flatten.filter(m => finalState.fitness.get(m).exists(_ > 0.85)).sortBy(finalState.population(_).genes.size).map(a => se.randomserver.ne.evaluator.Compiler.compileGenome(finalState.population(a), identity))
-      _ <- (for(winner <- winners) yield GraphvizHelper.plotCompiled[IO](winner)).sequence
+      winners = finalState.species
+        .map { species =>
+          species.members.maxByOption(finalState.fitness)
+        }
+        .flatten
+        .filter(m => finalState.fitness.get(m).exists(_ > 0.85))
+        .sortBy(finalState.population(_).genes.size)
+        .map(a =>
+          se.randomserver.ne.evaluator.Compiler
+            .compileGenome(finalState.population(a), identity)
+        )
+      _ <- (for (winner <- winners)
+        yield GraphvizHelper.plotCompiled[IO](winner)).sequence
     } yield (ExitCode.Success)
   }
 }

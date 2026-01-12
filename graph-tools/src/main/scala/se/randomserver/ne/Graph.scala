@@ -2,7 +2,6 @@ package se.randomserver.ne
 
 object Graph {
 
-
   def tarjanSCC[V](nodes: Set[V], edges: V => Set[V]): Set[Set[V]] = {
     import scala.collection.mutable
     val index = mutable.Map.empty[V, Int]
@@ -47,15 +46,14 @@ object Graph {
   }
 
   def kahnTopoSort[V](
-    nodes: Set[V],
-    edges: V => Set[V]
+      nodes: Set[V],
+      edges: V => Set[V]
   ): Seq[V] = {
     import scala.collection.immutable.Queue
     val indegree0 = nodes.map(_ -> 0).toMap
 
     val indegree =
-      nodes
-        .toSeq
+      nodes.toSeq
         .flatMap(n => edges(n))
         .foldLeft(indegree0) { (m, to) =>
           m.updated(to, m(to) + 1)
@@ -63,15 +61,16 @@ object Graph {
 
     def run(queue: Queue[V], indeg: Map[V, Int], acc: Vector[V]): Seq[V] = {
       queue.dequeueOption match {
-        case None => acc
-        case Some(n, rest) => 
-          val (indeg_, toQueue) = edges(n).toSeq.foldLeft((indeg, Vector.empty[V])) {
-            case ((m,q), to) =>
-              val degree = m(to) - 1
-              val m_ = m.updated(to, degree)
-              if (degree == 0) (m_, q :+ to) 
-              else (m_, q)
-          }
+        case None          => acc
+        case Some(n, rest) =>
+          val (indeg_, toQueue) =
+            edges(n).toSeq.foldLeft((indeg, Vector.empty[V])) {
+              case ((m, q), to) =>
+                val degree = m(to) - 1
+                val m_ = m.updated(to, degree)
+                if (degree == 0) (m_, q :+ to)
+                else (m_, q)
+            }
 
           run(rest.enqueueAll(toQueue), indeg_, acc :+ n)
       }
@@ -80,9 +79,11 @@ object Graph {
     val start = Queue.from(indegree.collect { case (n, 0) => n })
     val result = run(start, indegree, Vector.empty)
 
-    if(result.size != nodes.size)
-      throw new IllegalArgumentException("Cycle detected or topoSort dropped nodes")
-  
+    if (result.size != nodes.size)
+      throw new IllegalArgumentException(
+        "Cycle detected or topoSort dropped nodes"
+      )
+
     result
   }
 }

@@ -37,7 +37,11 @@ class ChartPane(viewModel: ChartViewModel) extends StackPane {
 
   genAxis.setAnimated(false)
 
-  def overlayToAxisX(axis: NumberAxis, overlayX: Double, overlayPane: Pane): Double = {
+  def overlayToAxisX(
+      axis: NumberAxis,
+      overlayX: Double,
+      overlayPane: Pane
+  ): Double = {
     val scenePoint = overlayPane.localToScene(overlayX, 0)
     val axisLocalX = axis.sceneToLocal(scenePoint).getX
     axis.getValueForDisplay(axisLocalX).doubleValue() // data value
@@ -73,9 +77,9 @@ class ChartPane(viewModel: ChartViewModel) extends StackPane {
         val x = axisXToOverlay(genAxis, value)
         if (!x.isNaN) {
           line.startX = x
-          line.endX   = x
+          line.endX = x
           line.startY = axisYToOverlay(fitAxis, fitAxis.lowerBound())
-          line.endY   = axisYToOverlay(fitAxis, fitAxis.upperBound())
+          line.endY = axisYToOverlay(fitAxis, fitAxis.upperBound())
           line.visible = true
         }
       } else {
@@ -85,19 +89,33 @@ class ChartPane(viewModel: ChartViewModel) extends StackPane {
 
   def updateCurrentGenerationFromX(mouseX: Double): Unit = {
     val genValue = overlayToAxisX(genAxis, mouseX, overlayPane)
-    
+
     // Snap to integer if generation IDs are integers
     val snappedGen = Math.round(genValue).toInt
     viewModel.session.currentGenerationId.set(snappedGen)
   }
 
-  genAxis.lowerBound.onChange { (_, _, _) => overlayLine(selectionLine, viewModel.session.currentGenerationId()) }
-  genAxis.upperBound.onChange { (_, _, _) => overlayLine(selectionLine, viewModel.session.currentGenerationId()) }
-  fitAxis.lowerBound.onChange { (_, _, _) => overlayLine(selectionLine, viewModel.session.currentGenerationId()) }
-  fitAxis.upperBound.onChange { (_, _, _) => overlayLine(selectionLine, viewModel.session.currentGenerationId()) }
-  chart.widthProperty.onChange  { (_, _, _) => overlayLine(selectionLine, viewModel.session.currentGenerationId()) }
-  chart.heightProperty.onChange { (_, _, _) => overlayLine(selectionLine, viewModel.session.currentGenerationId()) }
-  viewModel.session.currentGenerationId.onChange { (_, _, gen) => overlayLine(selectionLine, gen) }
+  genAxis.lowerBound.onChange { (_, _, _) =>
+    overlayLine(selectionLine, viewModel.session.currentGenerationId())
+  }
+  genAxis.upperBound.onChange { (_, _, _) =>
+    overlayLine(selectionLine, viewModel.session.currentGenerationId())
+  }
+  fitAxis.lowerBound.onChange { (_, _, _) =>
+    overlayLine(selectionLine, viewModel.session.currentGenerationId())
+  }
+  fitAxis.upperBound.onChange { (_, _, _) =>
+    overlayLine(selectionLine, viewModel.session.currentGenerationId())
+  }
+  chart.widthProperty.onChange { (_, _, _) =>
+    overlayLine(selectionLine, viewModel.session.currentGenerationId())
+  }
+  chart.heightProperty.onChange { (_, _, _) =>
+    overlayLine(selectionLine, viewModel.session.currentGenerationId())
+  }
+  viewModel.session.currentGenerationId.onChange { (_, _, gen) =>
+    overlayLine(selectionLine, gen)
+  }
 
   overlayPane.onMouseClicked = (e: MouseEvent) => {
     updateCurrentGenerationFromX(e.x)
@@ -108,7 +126,6 @@ class ChartPane(viewModel: ChartViewModel) extends StackPane {
     val snappedGen = Math.round(genValue).toInt
     overlayLine(mouseLine, snappedGen)
   }
-
 
   maxWidth = Double.MaxValue
   children = Seq(chart, overlayPane)

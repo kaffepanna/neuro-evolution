@@ -7,7 +7,9 @@ import se.randomserver.ne.the_game.Game
 
 class GameReplayViewModel(session: SessionViewModel) {
   val gameState = ObjectProperty[Option[GameState]](None)
-  val gridProperty = ObjectProperty[Vector[Vector[Game.Cell]]](gameState.value.map(_.grid).getOrElse(null))
+  val gridProperty = ObjectProperty[Vector[Vector[Game.Cell]]](
+    gameState.value.map(_.grid).getOrElse(null)
+  )
 
   gameState <== session.currentGameState
   gameState.onChange { (_, _, gs) =>

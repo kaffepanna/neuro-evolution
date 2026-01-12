@@ -14,32 +14,35 @@ import se.randomserver.ne.the_game.Game.Cell
 import scalafx.scene.layout.Region
 import scalafx.scene.layout.Priority
 
-class GameReplay(gridViewModel: GameReplayViewModel) extends GridPane[Game.Cell](gridViewModel.gridProperty) {
+class GameReplay(gridViewModel: GameReplayViewModel)
+    extends GridPane[Game.Cell](gridViewModel.gridProperty) {
   stylePicker = { (r, c, cell) =>
     cell match
-      case Cell.Empty => CellStyle(Color.WhiteSmoke, 0)
+      case Cell.Empty                => CellStyle(Color.WhiteSmoke, 0)
       case Cell.Individual(id, team) => CellStyle(team.color, 4)
-      case Cell.Obstacle => CellStyle(Color.Black, 0)
-      case Cell.Food => CellStyle(Color.Green, 0)
+      case Cell.Obstacle             => CellStyle(Color.Black, 0)
+      case Cell.Food                 => CellStyle(Color.Green, 0)
   }
 
-  this.cellOverlay = { (row, col, cell, xy, cellSize, gc) => cell match
-    case Cell.Individual(id, team) => gridViewModel.gameState.value.foreach { gameState =>
-      val (x, y) = xy
-      val ind = gameState.individuals(id)
-      val cX = x + cellSize/2
-      val cY = y + cellSize/2
-      gc.setStroke(Color.Black)
-      ind.pose.heading match
-        case Heading.North =>
-          gc.strokeLine(cX, cY, cX, cY - cellSize/2)
-        case Heading.East =>
-          gc.strokeLine(cX, cY, cX + cellSize/2, cY)
-        case Heading.West =>
-          gc.strokeLine(cX, cY, cX - cellSize/2, cY)
-        case Heading.South =>
-          gc.strokeLine(cX, cY, cX, cY + cellSize/2)
-    }
-    case _ =>
+  this.cellOverlay = { (row, col, cell, xy, cellSize, gc) =>
+    cell match
+      case Cell.Individual(id, team) =>
+        gridViewModel.gameState.value.foreach { gameState =>
+          val (x, y) = xy
+          val ind = gameState.individuals(id)
+          val cX = x + cellSize / 2
+          val cY = y + cellSize / 2
+          gc.setStroke(Color.Black)
+          ind.pose.heading match
+            case Heading.North =>
+              gc.strokeLine(cX, cY, cX, cY - cellSize / 2)
+            case Heading.East =>
+              gc.strokeLine(cX, cY, cX + cellSize / 2, cY)
+            case Heading.West =>
+              gc.strokeLine(cX, cY, cX - cellSize / 2, cY)
+            case Heading.South =>
+              gc.strokeLine(cX, cY, cX, cY + cellSize / 2)
+        }
+      case _ =>
   }
 }

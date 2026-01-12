@@ -8,12 +8,11 @@ import java.util.function.UnaryOperator
 import scalafx.scene.control.TextFormatter
 import scalafx.scene.control.TextFormatter.Change
 
-
 object UIMacros {
   inline def summonMirrorOpt[T]: Option[Mirror.ProductOf[T]] =
     summonFrom {
       case m: Mirror.ProductOf[T] => Some(m)
-      case _ => None
+      case _                      => None
     }
 
   inline def summonLabels[T <: Tuple]: List[String] =
@@ -24,18 +23,18 @@ object UIMacros {
         Nil
 
   inline def buildFieldsWithDefaults[Types <: Tuple](
-    labels: List[String],
-    values: List[Any],
-    prefix: String = ""
+      labels: List[String],
+      values: List[Any],
+      prefix: String = ""
   ): Seq[(Label, TextField)] =
     inline erasedValue[Types] match
       case _: (h *: t) =>
         val labelName =
           if prefix.isEmpty then labels.head
           else s"$prefix.${labels.head}"
-  
+
         val value = values.head
-  
+
         val current =
           inline summonMirrorOpt[h] match
             case Some(m) =>
@@ -47,18 +46,20 @@ object UIMacros {
                 value.asInstanceOf[Product].productIterator.toList,
                 labelName
               )
-  
+
             case None =>
               // Leaf field
               buildLeafField[h](labelName, value)
-  
+
         current ++ buildFieldsWithDefaults[t](labels.tail, values.tail, prefix)
-  
+
       case _: EmptyTuple =>
         Nil
 
-
-  inline def buildLeafField[T](label: String, value: Any): Seq[(Label, TextField)] =
+  inline def buildLeafField[T](
+      label: String,
+      value: Any
+  ): Seq[(Label, TextField)] =
     inline erasedValue[T] match
       case _: Int =>
         Seq(
@@ -68,7 +69,7 @@ object UIMacros {
               text = value.asInstanceOf[Int].toString
             }
         )
-  
+
       case _: Double =>
         Seq(
           Label(label) ->
@@ -77,7 +78,7 @@ object UIMacros {
               text = value.asInstanceOf[Double].toString
             }
         )
-  
+
       case _: String =>
         Seq(
           Label(label) ->
@@ -85,35 +86,42 @@ object UIMacros {
               text = value.asInstanceOf[String]
             }
         )
-  
+
       case _ =>
         Nil
-
 
   def productValues(value: Product): List[Any] =
     value.productIterator.toList
 
   def readInt(tf: TextField): Int =
-  tf.textFormatter().valueProperty().getValue()
-    .asInstanceOf[java.lang.Integer]
-    .intValue()
+    tf.textFormatter()
+      .valueProperty()
+      .getValue()
+      .asInstanceOf[java.lang.Integer]
+      .intValue()
 
   def readDouble(tf: TextField): Double =
-    tf.textFormatter().valueProperty().getValue()
+    tf.textFormatter()
+      .valueProperty()
+      .getValue()
       .asInstanceOf[java.lang.Double]
       .doubleValue()
-  
+
   def readString(tf: TextField): String =
     tf.text.value
 
-  inline def readValueCopy[T](instance: T, fields: List[TextField]): (T, List[TextField]) =
+  inline def readValueCopy[T](
+      instance: T,
+      fields: List[TextField]
+  ): (T, List[TextField]) =
     summonFrom {
       case m: Mirror.ProductOf[T] =>
         // nested case class
         val elems = instance.asInstanceOf[Product].productIterator.toList
-        val (updatedElems, rest) = readTupleCopy[m.MirroredElemTypes](elems, fields)
+        val (updatedElems, rest) =
+          readTupleCopy[m.MirroredElemTypes](elems, fields)
         (m.fromProduct(Tuple.fromArray(updatedElems.toArray)), rest)
-  
+
       case _ =>
         // leaf field
         inline erasedValue[T] match
@@ -127,24 +135,29 @@ object UIMacros {
             (instance, fields)
     }
 
-  inline def readTupleCopy[Types <: Tuple](elems: List[Any], fields: List[TextField], acc: List[Any] = Nil): (List[Any], List[TextField]) =
+  inline def readTupleCopy[Types <: Tuple](
+      elems: List[Any],
+      fields: List[TextField],
+      acc: List[Any] = Nil
+  ): (List[Any], List[TextField]) =
     inline erasedValue[Types] match
       case _: (h *: t) =>
         val (value, rest) = readValueCopy[h](elems.head.asInstanceOf[h], fields)
         readTupleCopy[t](elems.tail, rest, acc :+ value)
       case _: EmptyTuple =>
         (acc, fields)
-  
 
-  inline def readFormWithDefaults[T](instance: T, fields: Seq[(Label, TextField)])(using m: Mirror.ProductOf[T]): T =
+  inline def readFormWithDefaults[T](
+      instance: T,
+      fields: Seq[(Label, TextField)]
+  )(using m: Mirror.ProductOf[T]): T =
     val onlyFields = fields.map(_._2).toList
     readValueCopy[T](instance, onlyFields)._1
 
-
-  inline def textFieldsFor[T](value: T)(using m: Mirror.ProductOf[T]): Seq[(Label,TextField)] =
+  inline def textFieldsFor[T](value: T)(using
+      m: Mirror.ProductOf[T]
+  ): Seq[(Label, TextField)] =
     val labels = summonLabels[m.MirroredElemLabels]
     val values = productValues(value.asInstanceOf[Product])
     buildFieldsWithDefaults[m.MirroredElemTypes](labels, values)
 }
-
-

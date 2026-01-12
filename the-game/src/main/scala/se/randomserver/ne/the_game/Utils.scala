@@ -11,7 +11,7 @@ object Utils {
     require(parts > 0, "parts must be > 0")
 
     val total = vec.length
-    val base  = total / parts
+    val base = total / parts
     val extra = total % parts
 
     var offset = 0
@@ -44,17 +44,20 @@ object Utils {
         List((r - 1, c), (r + 1, c), (r, c - 1), (r, c + 1))
           .filter { case (i, j) => i >= 0 && i < rows && j >= 0 && j < cols }
           .map { case (rr, cc) => grid(rr)(cc) }
-          .exists { cell => 
+          .exists { cell =>
             cell match
               case Cell.Individual(_, _) => true
-              case _ => false
+              case _                     => false
           }
 
-    def place(id: Game.Id, teamId: Game.TeamId)(using rand: Random): ((Int, Int), Vector[Vector[Cell]]) = {
+    def place(id: Game.Id, teamId: Game.TeamId)(using
+        rand: Random
+    ): ((Int, Int), Vector[Vector[Cell]]) = {
       val freePos = allPositions.filterNot { case (r, c) => occupied(r, c) }
-      if (freePos.isEmpty) throw new IllegalStateException("No free positions to place on grid")
+      if (freePos.isEmpty)
+        throw new IllegalStateException("No free positions to place on grid")
 
-      val (r,c) = freePos(rand.between(0, freePos.size))
+      val (r, c) = freePos(rand.between(0, freePos.size))
       (r, c) -> grid.updated(r, grid(r).updated(c, Cell.Individual(id, teamId)))
     }
 
@@ -67,30 +70,40 @@ object Utils {
     }
 
     def cellAt(pos: Pos): Cell = if inBounds(pos)
-                                 then grid(pos._1)(pos._2)
-                                 else Cell.Obstacle
+    then grid(pos._1)(pos._2)
+    else Cell.Obstacle
 
-    def rebuild(individuals: Iterable[IndividualState]): Vector[Vector[Cell]] = {
-      val individualByPos = individuals.filter(i => i.alive).map(i => i.pose.pos -> i).toMap
-      
+    def rebuild(
+        individuals: Iterable[IndividualState]
+    ): Vector[Vector[Cell]] = {
+      val individualByPos =
+        individuals.filter(i => i.alive).map(i => i.pose.pos -> i).toMap
+
       Vector.tabulate(rows, cols) { (r, c) =>
         individualByPos.get((r, c)) match {
           case Some(ind) => Cell.Individual(ind.id, ind.team)
-          case None => grid(r)(c) match
-            case Cell.Individual(id, team) => Cell.Empty
-            case other => other
+          case None      =>
+            grid(r)(c) match
+              case Cell.Individual(id, team) => Cell.Empty
+              case other                     => other
         }
       }
     }
 
     def adjacentPositions(pos: Pos): Set[Pos] = {
       val (r, c) = pos
-      Set( (r - 1, c - 1), (r - 1, c), (r - 1, c + 1),
-           (r,     c - 1),             (r,     c + 1),
-           (r + 1, c - 1), (r + 1, c), (r + 1, c + 1) )
+      Set(
+        (r - 1, c - 1),
+        (r - 1, c),
+        (r - 1, c + 1),
+        (r, c - 1),
+        (r, c + 1),
+        (r + 1, c - 1),
+        (r + 1, c),
+        (r + 1, c + 1)
+      )
     }
 
     def adjacent(pos: Pos): Set[Cell] = adjacentPositions(pos).map(cellAt)
   }
 }
-

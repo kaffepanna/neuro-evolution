@@ -13,13 +13,16 @@ class ScoreboardViewModel(session: SessionViewModel) {
 
   val scoreRows = ObservableBuffer[ScoreRow]()
 
-  session.currentGameState.onChange { (_, _, ostate) => ostate match
-    case Some(state) => scoreRows.setAll(
-      state.individuals.map {
-        case _ -> IndividualState(id, team, _, score, alive, _) => ScoreRow(id, team, score, alive)
-      }.toSeq*
-    )
-    case None =>
-      scoreRows.clear()
+  session.currentGameState.onChange { (_, _, ostate) =>
+    ostate match
+      case Some(state) =>
+        scoreRows.setAll(
+          state.individuals.map {
+            case _ -> IndividualState(id, team, _, score, alive, _) =>
+              ScoreRow(id, team, score, alive)
+          }.toSeq*
+        )
+      case None =>
+        scoreRows.clear()
   }
 }

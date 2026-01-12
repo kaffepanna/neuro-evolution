@@ -16,10 +16,15 @@ object GridPane {
   }
 }
 
-class GridPane[T](gridProperty: ObjectProperty[Vector[Vector[T]]]) extends Pane {
-  val stylePickerProperty = ObjectProperty[(Int, Int, T) => CellStyle]((_, _, _) => CellStyle.default)
-  val onCellSelectProperty = ObjectProperty[(Int, Int, T) => Unit]((_, _, _) => ())
-  val cellOverlayProperty = ObjectProperty[(Int, Int, T, (Double, Double), Double, GraphicsContext) => Unit]((_, _, _, _, _, _) => ())
+class GridPane[T](gridProperty: ObjectProperty[Vector[Vector[T]]])
+    extends Pane {
+  val stylePickerProperty =
+    ObjectProperty[(Int, Int, T) => CellStyle]((_, _, _) => CellStyle.default)
+  val onCellSelectProperty =
+    ObjectProperty[(Int, Int, T) => Unit]((_, _, _) => ())
+  val cellOverlayProperty = ObjectProperty[
+    (Int, Int, T, (Double, Double), Double, GraphicsContext) => Unit
+  ]((_, _, _, _, _, _) => ())
   val canvas = new Canvas()
 
   prefWidth = 800
@@ -39,13 +44,17 @@ class GridPane[T](gridProperty: ObjectProperty[Vector[Vector[T]]]) extends Pane 
   canvas.height.onChange { redraw }
   stylePickerProperty.onChange { redraw }
 
-  def stylePicker_=(fn: (Int, Int, T) => CellStyle): Unit = stylePickerProperty.value = fn
+  def stylePicker_=(fn: (Int, Int, T) => CellStyle): Unit =
+    stylePickerProperty.value = fn
   def stylePicker: (Int, Int, T) => CellStyle = stylePickerProperty()
 
-  def onCellSelect_=(fn: (Int, Int, T) => Unit) = onCellSelectProperty.value = fn
+  def onCellSelect_=(fn: (Int, Int, T) => Unit) = onCellSelectProperty.value =
+    fn
   def onCellSelect = onCellSelectProperty.value
 
-  def cellOverlay_=(fn: (Int, Int, T, (Double, Double), Double, GraphicsContext) => Unit): Unit = cellOverlayProperty.value = fn
+  def cellOverlay_=(
+      fn: (Int, Int, T, (Double, Double), Double, GraphicsContext) => Unit
+  ): Unit = cellOverlayProperty.value = fn
   def cellOverlay = cellOverlayProperty.value
 
   canvas.onMousePressed = { e =>
@@ -59,22 +68,22 @@ class GridPane[T](gridProperty: ObjectProperty[Vector[Vector[T]]]) extends Pane 
 
       val gridWidth = cellSize * cols
       val gridHeight = cellSize * rows
-      
+
       val xOffset = (w - gridWidth) / 2
       val yOffset = (h - gridHeight) / 2
       val c = ((e.getX - xOffset) / cellSize).toInt
       val r = ((e.getY - yOffset) / cellSize).toInt
- 
-      if (r >= 0 && r < rows && c >=0 && c < cols)
+
+      if (r >= 0 && r < rows && c >= 0 && c < cols)
         onCellSelect(r, c, grid(r)(c))
     }
   }
-  
+
   private def redraw: Unit = {
     if (gridProperty.value == null)
       return
     val grid = gridProperty()
-    val gc = canvas.graphicsContext2D 
+    val gc = canvas.graphicsContext2D
     val w = canvas.width()
     val h = canvas.height()
 
@@ -102,7 +111,12 @@ class GridPane[T](gridProperty: ObjectProperty[Vector[Vector[T]]]) extends Pane 
       val CellStyle(color, padding) = stylePicker(r, c, grid(r)(c))
       gc.fill = color
       gc.strokeRect(x, y, cellSize, cellSize)
-      gc.fillRect(x + padding/2 , y + padding/2, cellSize-padding, cellSize-padding)
+      gc.fillRect(
+        x + padding / 2,
+        y + padding / 2,
+        cellSize - padding,
+        cellSize - padding
+      )
       cellOverlay(r, c, grid(r)(c), (x, y), cellSize, gc)
     }
   }

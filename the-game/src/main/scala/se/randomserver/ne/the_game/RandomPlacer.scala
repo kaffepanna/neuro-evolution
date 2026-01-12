@@ -14,15 +14,15 @@ object RandomPlacer {
 
     // All positions on the grid
     val allPositions = for {
-        x <- 0 until n
-        y <- 0 until m
+      x <- 0 until n
+      y <- 0 until m
     } yield (x, y)
 
     // adjacency helper
     def neighbors(pos: Pos): Set[Pos] = {
-        val (x, y) = pos
-        Set((x-1, y), (x+1, y), (x, y-1), (x, y+1))
-        .filter { case (i,j) => i >= 0 && i < n && j >= 0 && j < m }
+      val (x, y) = pos
+      Set((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1))
+        .filter { case (i, j) => i >= 0 && i < n && j >= 0 && j < m }
     }
 
     def helper(
@@ -30,29 +30,29 @@ object RandomPlacer {
         occupied: Map[Pos, TeamId],
         result: Map[Id, Pos]
     ): Option[Map[Id, Pos]] = remaining match {
-        case Nil => Some(result)
-        case (id, team) :: tail =>
+      case Nil                => Some(result)
+      case (id, team) :: tail =>
         val freePositions = allPositions
-            .filterNot(occupied.contains)
-            .filter { pos =>
+          .filterNot(occupied.contains)
+          .filter { pos =>
             neighbors(pos).forall { nb =>
-                occupied.get(nb).forall(_ == team)
+              occupied.get(nb).forall(_ == team)
             }
-            }
+          }
 
         if (freePositions.isEmpty) None
         else {
-            // pick random position
-            val pos = freePositions(rand.nextInt(freePositions.size))
-            val newOccupied = occupied + (pos -> team)
-            helper(tail, newOccupied, result + (id -> pos))
+          // pick random position
+          val pos = freePositions(rand.nextInt(freePositions.size))
+          val newOccupied = occupied + (pos -> team)
+          helper(tail, newOccupied, result + (id -> pos))
         }
     }
 
     // shuffle input to randomize
     val shuffled = rand.shuffle(ids.toList)
     helper(shuffled, Map.empty, Map.empty)
-    }
+  }
 
   def placeIdsWithObstacles(
       ids: Set[(Id, TeamId)],
@@ -73,7 +73,7 @@ object RandomPlacer {
     // Get orthogonal neighbors
     def neighbors(pos: Pos): Set[Pos] = {
       val (x, y) = pos
-      Set((x-1, y), (x+1, y), (x, y-1), (x, y+1))
+      Set((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1))
         .filter { case (i, j) => i >= 0 && i < n && j >= 0 && j < m }
     }
 
@@ -83,7 +83,7 @@ object RandomPlacer {
         occupied: Map[Pos, TeamId],
         result: Map[Id, Pos]
     ): Option[Map[Id, Pos]] = remaining match {
-      case Nil => Some(result)
+      case Nil                => Some(result)
       case (id, team) :: tail =>
         val freePositions = allPositions
           .filterNot(occupied.contains)

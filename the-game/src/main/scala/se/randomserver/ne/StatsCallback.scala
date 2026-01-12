@@ -3,7 +3,11 @@ package se.randomserver.ne
 import se.randomserver.ne.the_game.Game.GameState
 import se.randomserver.ne.evolution.Evolution.SpeciesId
 
-final case class Stats(generationId: Int, game: Vector[GameState], speciesFitness: Map[SpeciesId, Double])
+final case class Stats(
+    generationId: Int,
+    game: Vector[GameState],
+    speciesFitness: Map[SpeciesId, Double]
+)
 
 trait StatsCallback[F[_]] {
   def pushGeneration(stats: Stats): F[Unit]

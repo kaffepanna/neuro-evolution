@@ -37,7 +37,7 @@ class KhanSpec extends munit.FunSuite {
     assertEquals(result.toSet, nodes)
     assert(isValidTopo(result, edges))
   }
-  /* 
+  /*
         A
        / \
       B   C
@@ -100,8 +100,8 @@ class KhanSpec extends munit.FunSuite {
 
   test("kahnTopoSort: self loop") {
     val nodes = Set(1)
-    val edges: Int => Set[Int] = {
-      case 1 => Set(1)
+    val edges: Int => Set[Int] = { case 1 =>
+      Set(1)
     }
 
     intercept[IllegalArgumentException] {

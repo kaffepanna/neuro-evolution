@@ -2,13 +2,13 @@ package se.randomserver.ne
 
 import se.randomserver.ne.Graph
 
-class TarjanSpec extends munit.FunSuite{
+class TarjanSpec extends munit.FunSuite {
 
   def scc[V](nodes: Set[V], edges: Map[V, Set[V]]): Set[Set[V]] =
     Graph.tarjanSCC(nodes, edges.getOrElse(_, Set.empty))
 
   def assertSCC[V](actual: Set[Set[V]], expected: Set[Set[V]]): Unit =
-    assert(actual == expected)    
+    assert(actual == expected)
 
   test("single node") {
     val nodes = Set(1)
@@ -60,7 +60,7 @@ class TarjanSpec extends munit.FunSuite{
       scc(nodes, edges),
       Set(Set(1, 2), Set(3, 4))
     )
-  }  
+  }
   // 1 → 2 → 3 → 1
   //     ↓
   //     4
@@ -113,9 +113,9 @@ class TarjanSpec extends munit.FunSuite{
   test("recurrent neat motif") {
     val nodes = Set("in", "h1", "h2", "out")
     val edges = Map(
-      "in"  -> Set("h1"),
-      "h1"  -> Set("h2"),
-      "h2"  -> Set("out"),
+      "in" -> Set("h1"),
+      "h1" -> Set("h2"),
+      "h2" -> Set("out"),
       "out" -> Set("h1")
     )
 
@@ -123,5 +123,5 @@ class TarjanSpec extends munit.FunSuite{
       scc(nodes, edges),
       Set(Set("h1", "h2", "out"), Set("in"))
     )
-  }  
+  }
 }

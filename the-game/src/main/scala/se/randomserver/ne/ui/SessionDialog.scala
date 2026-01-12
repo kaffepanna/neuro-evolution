@@ -34,9 +34,9 @@ class SessionDialog(env: GameEvolutionEnv) extends Dialog[GameEvolutionEnv] {
 
   gridView.stylePicker = { (r, c, cell) =>
     cell match
-      case Cell.Empty => CellStyle(Color.WhiteSmoke, 0)
+      case Cell.Empty                => CellStyle(Color.WhiteSmoke, 0)
       case Cell.Individual(id, team) => CellStyle(Color.Red, 4)
-      case Cell.Obstacle =>
+      case Cell.Obstacle             =>
         CellStyle(Color.Black, 4)
       case Cell.Food => CellStyle(Color.Green, 0)
   }
@@ -57,25 +57,24 @@ class SessionDialog(env: GameEvolutionEnv) extends Dialog[GameEvolutionEnv] {
   val fields = UIMacros.textFieldsFor[GameEvolutionEnv](env)
 
   val grid = new FXGridPane() {
-    fields.zipWithIndex.foreach {
-      case ((label, tf), i) => 
-        add(label, 0 , i)
-        add(tf, 1, i)
+    fields.zipWithIndex.foreach { case ((label, tf), i) =>
+      add(label, 0, i)
+      add(tf, 1, i)
     }
     padding = Insets(50, 20, 20, 20)
   }
 
-
-  this.dialogPane().content = 
-      new HBox { hbox =>
-        children = Seq(gridView, grid)
-      }
+  this.dialogPane().content = new HBox { hbox =>
+    children = Seq(gridView, grid)
+  }
 
   this.dialogPane().setMinHeight(Region.USE_COMPUTED_SIZE)
 
-  resultConverter = dialogButton => dialogButton match
-    case `startButtonType` =>
-      val result = UIMacros.readFormWithDefaults[GameEvolutionEnv](env, fields)
-      result.copy(grid = gridProperty.value)
-    case _ => null
+  resultConverter = dialogButton =>
+    dialogButton match
+      case `startButtonType` =>
+        val result =
+          UIMacros.readFormWithDefaults[GameEvolutionEnv](env, fields)
+        result.copy(grid = gridProperty.value)
+      case _ => null
 }

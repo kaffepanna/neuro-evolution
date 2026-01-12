@@ -15,7 +15,7 @@ class PlaybackControl(playbackViewModel: PlaybackViewModel) extends HBox {
   val playPauseButton = new Button {
     padding = Insets(4, 4, 4, 4)
   }
-  
+
   val playbackSlider = new Slider() {
     showTickLabels = true
     showTickMarks = true
@@ -32,24 +32,24 @@ class PlaybackControl(playbackViewModel: PlaybackViewModel) extends HBox {
     value <==> playbackViewModel.speedFps
   }
 
-  val sliders =new VBox {
+  val sliders = new VBox {
     children += playbackSlider
     children += fpsSlider
     fillWidth = true
     maxWidth = Double.MaxValue
     padding = Insets(4, 4, 4, 4)
-  } 
+  }
 
   val playIcon = new FontIcon(FontAwesomeSolid.PLAY)
   val pauseIcon = new FontIcon(FontAwesomeSolid.PAUSE)
 
   playPauseButton.graphic <== playbackViewModel.playing.map { playing =>
-     if(!playing) playIcon
-     else        pauseIcon
+    if (!playing) playIcon
+    else pauseIcon
   }
 
   playPauseButton.onAction = { _ =>
-    if(playbackViewModel.playing.value)
+    if (playbackViewModel.playing.value)
       playbackViewModel.pause()
     else
       playbackViewModel.play()
@@ -57,9 +57,9 @@ class PlaybackControl(playbackViewModel: PlaybackViewModel) extends HBox {
 
   HBox.setHgrow(sliders, Priority.Always)
   alignment = Pos.CenterLeft
-  
+
   children ++= Seq(
     playPauseButton,
-    sliders 
+    sliders
   )
 }

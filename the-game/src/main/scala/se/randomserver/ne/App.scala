@@ -9,7 +9,8 @@ import java.util.concurrent.Executors
 
 object App {
 
-  val computeThreads = math.max(1, Runtime.getRuntime().availableProcessors()*2 - 1)
+  val computeThreads =
+    math.max(1, Runtime.getRuntime().availableProcessors() * 2 - 1)
 
   println(s"Compue threads allocated $computeThreads")
 
@@ -19,26 +20,28 @@ object App {
     )
 
   given runtime: IORuntime =
-    IORuntime.builder()
+    IORuntime
+      .builder()
       .setCompute(computeEC, () => ())
       .build()
 
   def main(args: Array[String]): Unit = {
     given ExecutionContext = computeEC
 
-    Dispatcher.parallel[IO].use { dispatcher =>
-      IO {
-        val runtime = BackgroundRuntime(dispatcher, computeThreads)
-        val uiApp = GridVisualizer(dispatcher, runtime)
+    Dispatcher
+      .parallel[IO]
+      .use { dispatcher =>
+        IO {
+          val runtime = BackgroundRuntime(dispatcher, computeThreads)
+          val uiApp = GridVisualizer(dispatcher, runtime)
 
-        Runtime.getRuntime.addShutdownHook(
-          new Thread(() =>
-            dispatcher.unsafeRunAndForget(runtime.shutdown())
+          Runtime.getRuntime.addShutdownHook(
+            new Thread(() => dispatcher.unsafeRunAndForget(runtime.shutdown()))
           )
-        )
 
-        uiApp.main(args)
+          uiApp.main(args)
+        }
       }
-    }.unsafeRunSync()
+      .unsafeRunSync()
   }
 }

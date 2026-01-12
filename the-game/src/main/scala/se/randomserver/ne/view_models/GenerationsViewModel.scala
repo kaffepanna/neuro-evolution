@@ -10,11 +10,11 @@ class GenerationsViewModel(session: SessionViewModel) {
   val selectedGenerationId = LongProperty(-1)
 
   selectedGenerationId <==> session.currentGenerationId
-  
+
   session.generations.onChange { (_, change) =>
     change match
-      case ObservableMap.Add(key, _) => generationIds += key
+      case ObservableMap.Add(key, _)    => generationIds += key
       case ObservableMap.Remove(key, _) => generationIds -= key
-    generationIds.sortInPlace() 
+    generationIds.sortInPlace()
   }
 }

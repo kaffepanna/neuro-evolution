@@ -8,14 +8,14 @@ object ScalaFxOps {
   extension [A](source: ObservableBuffer[A]) {
     def mapObservable[B](f: A => B): ObservableBuffer[B] = {
       val target = new ObservableBuffer[B]()
-        target ++= source.map(f)
+      target ++= source.map(f)
 
-        source.onChange { (_, _) =>
-          target.setAll(source.map(f))
-        }
-
-        target
+      source.onChange { (_, _) =>
+        target.setAll(source.map(f))
       }
+
+      target
+    }
   }
 
   extension (id: Game.TeamId) {

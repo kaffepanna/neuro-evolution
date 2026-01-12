@@ -1,6 +1,5 @@
 package se.randomserver.ne
 
-
 import scalafx.application.JFXApp3
 import scalafx.scene.Scene
 import scalafx.scene.layout.BorderPane
@@ -24,7 +23,6 @@ import scalafx.scene.layout.Pane
 import scalafx.beans.property.ObjectProperty
 import scalafx.beans.property.BufferProperty
 import scalafx.Includes._
-
 
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
@@ -63,14 +61,14 @@ import org.kordamp.ikonli.javafx.FontIcon
 import org.kordamp.ikonli.fontawesome5.FontAwesomeSolid
 import se.randomserver.ne.the_game.Game
 
-class GridVisualizer(dispatcher: Dispatcher[IO], runtime: BackgroundRuntime) extends JFXApp3 {
-  
+class GridVisualizer(dispatcher: Dispatcher[IO], runtime: BackgroundRuntime)
+    extends JFXApp3 {
+
   def shutdown(): Unit =
     dispatcher.unsafeRunAndForget {
       runtime.shutdown()
     }
 
-   
   override def start(): Unit = {
 
     val sessionViewModel = new SessionViewModel(runtime)
@@ -78,8 +76,8 @@ class GridVisualizer(dispatcher: Dispatcher[IO], runtime: BackgroundRuntime) ext
     val playbackViewModel = new PlaybackViewModel(sessionViewModel)
     val scoreboardViewModel = new ScoreboardViewModel(sessionViewModel)
     val chartViewModel = new ChartViewModel(session = sessionViewModel)
-    
-    val chart = new ChartPane(chartViewModel) 
+
+    val chart = new ChartPane(chartViewModel)
 
     val toolbar = new ToolBar {
       val startButton = new Button {
@@ -98,7 +96,8 @@ class GridVisualizer(dispatcher: Dispatcher[IO], runtime: BackgroundRuntime) ext
       }
 
       content = List(
-        startButton, stopButton
+        startButton,
+        stopButton
       )
     }
 
@@ -117,9 +116,9 @@ class GridVisualizer(dispatcher: Dispatcher[IO], runtime: BackgroundRuntime) ext
       children += borderPane
     }
 
-    StackPane.setAlignment(borderPane, Pos.Center) 
+    StackPane.setAlignment(borderPane, Pos.Center)
 
-    //sessionViewModel.start()
+    // sessionViewModel.start()
 
     stage = new JFXApp3.PrimaryStage {
       title = "NEAT Game"
