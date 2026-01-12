@@ -3,6 +3,7 @@ package se.randomserver.ne.the_game
 import scala.util.Random
 import java.nio.file.Path
 import java.nio.file.Paths
+import Utils.{*, given}
 
 object Game {
   type Id = Int
@@ -46,9 +47,8 @@ object Game {
   )
 
   object GameState {
-    import Utils.{*, given}
     
-    def random(grid: Vector[Vector[Cell]], inds: Set[(Id, TeamId)]): GameState =
+    def random(grid: Vector[Vector[Cell]], inds: Set[(Id, TeamId)]): GameState = {
       given rnd: Random = new Random()
 
       val (indStates, grid2) = inds.foldLeft(Map.empty[Int, IndividualState], grid) { case ((is, g), (id, teamId)) =>
@@ -60,6 +60,7 @@ object Game {
       GameState(
         grid2, indStates
       )
+    }
   }
 
   def vision(
@@ -77,7 +78,7 @@ object Game {
 
     val base = Vector.tabulate(size, size) { (i, j) =>
       val pos = (r0 + i - radius, c0 + j - radius)
-      cellAt(state.grid, pos).getOrElse(Game.Cell.Obstacle)
+      state.grid.cellAt(pos)
     }
     heading match {
       case Heading.North => base
@@ -100,7 +101,7 @@ object Game {
     }
   }
 
-  def move(pos: Pose , a: Action): Pose = 
+  def move(pos: Pose , a: Action): Pose = {
     val Pose((r, c), heading) = pos
     a match
       case Action.Forward  => heading match
@@ -108,77 +109,22 @@ object Game {
         case Heading.East  =>  Pose((r     , c + 1), heading)
         case Heading.West  =>  Pose((r     , c - 1), heading)
         case Heading.South =>  Pose((r + 1 , c    ), heading)
-    
+
       case Action.TurnLeft => heading match
         case Heading.North => Pose((r, c), Heading.West)
         case Heading.East  => Pose((r, c), Heading.North)
         case Heading.West  => Pose((r, c), Heading.South)
         case Heading.South => Pose((r, c), Heading.East)
-      
+
       case Action.TurnRight => heading match
         case Heading.North => Pose((r, c), Heading.East)
         case Heading.East  => Pose((r, c), Heading.South)
         case Heading.West  => Pose((r, c), Heading.North)
         case Heading.South => Pose((r, c), Heading.West)
-      
+
       case Action.Nothing   => Pose((r, c), heading)
-
-
-  def inBounds(grid: Vector[Vector[Game.Cell]], pos: Game.Pos): Boolean = {
-    val (r, c) = pos
-    r >= 0 &&
-    c >= 0 &&
-    r < grid.length &&
-    c < grid.head.length
   }
 
-  def cellAt(
-    grid: Vector[Vector[Game.Cell]],
-    pos: Game.Pos
-  ): Option[Game.Cell] =
-    if (inBounds(grid, pos))
-      Some(grid(pos._1)(pos._2))
-    else
-      None
-
-  def pickOne(ids: Iterable[Id]): Option[Id] =
-    ids.minOption
-
-  def neighborsPositions(pos: Pos): Set[Pos] =
-    Set(
-      (pos._1 - 1, pos._2),
-      (pos._1 + 1, pos._2),
-      (pos._1, pos._2 - 1),
-      (pos._1, pos._2 + 1)
-    )
-
-  def rebuildGrid(
-    oldGrid: Vector[Vector[Cell]],
-    individuals: Iterable[IndividualState]
-  ): Vector[Vector[Cell]] = {
-
-    val height = oldGrid.length
-    val width  = oldGrid.head.length
-
-    // Map positions → individual
-    val individualsByPos: Map[(Int, Int), IndividualState] =
-      individuals.filter(is => is.alive).map(i => i.pose.pos -> i).toMap
-
-    Vector.tabulate(height, width) { (r, c) =>
-      individualsByPos.get((r, c)) match {
-        case Some(ind) =>
-          Cell.Individual(ind.id, ind.team)
-
-        case None =>
-          oldGrid(r)(c) match {
-            case Cell.Individual(_, _) =>
-              Cell.Empty                    // clear old individuals
-            case other =>
-              other                         // Obstacle / Food / Empty
-          }
-      }
-    }
-  }
 
   def resolveSameTeamCollision(
     state: GameState,
@@ -186,7 +132,7 @@ object Game {
     idPoses: Iterable[(Id, Pose)]
   ): Map[Id, Resolution] = {
 
-    val winner = pickOne(idPoses.map(_._1))
+    val winner = Utils.pickOne(idPoses.map(_._1))
 
     idPoses.map { case (id, pose) =>
       if (Some(id) == winner)
@@ -196,32 +142,54 @@ object Game {
     }.toMap
   }
 
+  def resolve(state: GameState, intents: Map[Id, Resolution]): Map[Id, Resolution] = {
+    import scala.reflect.Selectable.reflectiveSelectable
+
+    val deaths = intents.filter(_._2.isInstanceOf[Resolution.Die.type])
+    val grouped = intents.collect {
+      case v @ (_, Resolution.Move(pose)) => pose.pos -> v
+      case v @ (_, Resolution.Stay(pose)) => pose.pos -> v
+    }.groupMap(_._1)(_._2)
+
+    if grouped.forall(_._2.size == 1)
+    then intents
+    else
+      val resolved = grouped.flatMap { case (pos, idResolutions) =>
+        val teams = idResolutions.map { case (id, _) => state.individuals(id).team }.toSet
+        if(teams.size > 1)
+          idResolutions.map { case (id, _) => id -> Resolution.Die }
+        else if (idResolutions.size > 1)
+          idResolutions.map { 
+            case (id, Resolution.Move(_)) => id -> Resolution.Stay(state.individuals(id).pose)
+            case (id, stay: Resolution.Stay) => id -> stay
+            case _ => throw new IllegalStateException(s"un-expected Die")
+          }
+        else
+          idResolutions
+      }
+      //resolve(state, resolved ++ deaths)
+      resolved.collect { 
+        case (_, r @ Resolution.Move(to)) => to -> r
+        case (_, r @ Resolution.Stay(where)) => where -> r
+      }.groupMap(_._1)(_._2).foreach { case (_, ps) =>
+        if ps.size > 1 then println(s"still conflicts $ps")
+                       else ()
+      }
+      resolved ++ deaths
+  }
+
   def resolveConflicts(
     state: GameState,
     intents: Map[Id, Pose]
   ): Map[Id, Resolution] = {
 
-    val grouped = intents.groupMap(_._2.pos)(a => a)
-
-    grouped.flatMap { case (pos, idPoses) =>
-
-      val teams = idPoses.map { case (id, pose) => state.individuals(id).team }.toSet
-
-      cellAt(state.grid, pos) match {
-
-        // ⛔ outside or obstacle → nobody moves
-        case None | Some(Cell.Obstacle) =>
-          idPoses.map { case (id, pose) => id -> Resolution.Stay(Pose(pos, pose.heading)) }
-
-        // ⚔️ multiple teams arrive at same cell → all die
-        case Some(Cell.Individual(presentId, presentTeamId)) =>
-          resolveSameTeamCollision(state, pos, idPoses.toSet)
-        case _ if teams.size > 1 =>
-          idPoses.map { case (id, _) => id -> Resolution.Die }
-        case _ =>
-          resolveSameTeamCollision(state, pos, idPoses)
-      }
+    val resolutions = intents.map {
+      case (id, pose) if state.individuals(id).pose.pos == pose.pos => id -> Resolution.Stay(pose)
+      case (id, pose) if state.grid.cellAt(pose.pos) == Cell.Obstacle => id -> Resolution.Stay(state.individuals(id).pose)
+      case (id, pose) => id -> Resolution.Move(pose)
     }
+
+    resolve(state, resolutions)
   }
 
   def resolveAdjacencyCombat(
@@ -237,7 +205,7 @@ object Game {
     alive.collect {
       case (id, ind) =>
         val adj =
-          neighborsPositions(ind.pose.pos)
+          state.grid.adjacentPositions(ind.pose.pos)
             .flatMap(byPos.get)
             .map(nid => alive(nid))
 
@@ -269,7 +237,7 @@ object Game {
 
     state.copy(
       individuals = updatedIndividuals,
-      grid = rebuildGrid(state.grid, updatedIndividuals.values)
+      grid = state.grid.rebuild(updatedIndividuals.values)
     )
   }
 
@@ -284,7 +252,7 @@ object Game {
     // Initialize delta scores
     var deltaScores = Map.empty[Game.Id, Double].withDefaultValue(0.0)
 
-    // 1️⃣ Movement reward
+    // Movement reward
     newState.individuals.foreach { case (id, ind) =>
       moveResolutions.get(id) match {
         case Some(Resolution.Move(pose)) if !oldState.individuals(id).visited.contains(pose.pos) =>
@@ -293,12 +261,12 @@ object Game {
       }
     }
 
-    // 2️⃣ Food reward
+    // Food reward
     foodConsumed.foreach { case (id, _) =>
       deltaScores += id -> (deltaScores(id) + 5.0)
     }
 
-    // 3️⃣ Adjacency combat: assign rewards to winners
+    // Adjacency combat: assign rewards to winners
     // Agents that died in adjacency combat
     val deadByCombat = adjacencyCombatRes.collect {
       case (id, Resolution.Die) => id
@@ -307,7 +275,7 @@ object Game {
     // For each dead agent, find adjacent allies in oldState and award them
     deadByCombat.foreach { deadId =>
       val dead = oldState.individuals(deadId)
-      val neighbors = neighborsPositions(dead.pose.pos)
+      val neighbors = oldState.grid.adjacentPositions(dead.pose.pos)
 
       neighbors.foreach { pos =>
         oldState.individuals.collect {
@@ -321,7 +289,7 @@ object Game {
       }
     }
 
-    // 4️⃣ Death penalties
+    // Death penalties
     newState.individuals.foreach { case (id, ind) =>
       if (!ind.alive) {
         val penalty =
@@ -334,7 +302,7 @@ object Game {
       }
     }
 
-    // 5️⃣ Apply score updates
+    // Apply score updates
     val updatedIndividuals = newState.individuals.map { case (id, ind) =>
       id -> ind.copy(score = ind.score + deltaScores(id))
     }
@@ -344,10 +312,9 @@ object Game {
 
   def foodConsumed(oldState: GameState, newState: GameState): Map[Id, Pos] = {
     newState.individuals.values.filter(_.alive).collect {
-      case IndividualState(id, _, pose, _, _, _) if cellAt(oldState.grid, pose.pos) == Some(Cell.Food)=> id -> pose.pos
+      case IndividualState(id, _, pose, _, _, _) if oldState.grid.cellAt(pose.pos) == Some(Cell.Food)=> id -> pose.pos
     }.toMap
   }
-
 
   def step(state: GameState, actions: Map[Id, Action]): GameState = {
     val intents         = computeIntents(state, actions)
